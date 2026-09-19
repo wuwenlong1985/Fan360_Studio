@@ -85,6 +85,9 @@ npm run build
 
 - Electron + electron-vite + React + TypeScript 工程
 - Ant Design 5.27.6 浅色工作台（对齐 Touch_Key 参考项目）
+- 白色标题栏、蓝色应用图标和参考项目布局
+- 顶部 20 场景下拉选择，无左侧菜单栏
+- 右侧 Collapse 可展开/折叠设置
 - 大正方形 3D 视口
 - 圆形设备显示区域遮罩和开关
 - 左栏、右栏、下方预览独立显示/隐藏
@@ -123,3 +126,7 @@ npm run package
 - 绿色版：`C:\Users\Administrator\Desktop\deepseek\apps\desktop\release\win-unpacked\Fan360 Studio.exe`
 
 绿色版已经从 `app.asar` 独立启动验证，不依赖 Vite 开发服务器。
+
+## 最终桌面界面
+
+![Fan360 打包版界面](C:\Users\Administrator\Desktop\deepseek\docs\package-final-ui.png)
