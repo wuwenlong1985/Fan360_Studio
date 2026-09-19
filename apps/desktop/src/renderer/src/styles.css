@@ -780,3 +780,47 @@ select {
 .workspace {
   height: calc(100vh - 60px) !important;
 }
+
+/* Native title bar overlay and draggable application header */
+.app-header {
+  background: #f3f5f9 !important;
+  padding-right: 150px !important;
+  -webkit-app-region: drag;
+}
+
+.app-header button,
+.app-header .ant-select,
+.app-header .ant-segmented,
+.app-header .panel-toggles,
+.app-header .ant-badge,
+.app-header .ant-tag {
+  -webkit-app-region: no-drag;
+}
+
+.webgl-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 30px;
+  color: #dcecff;
+  text-align: center;
+  background: radial-gradient(circle, #17304d, #08111d 70%);
+}
+
+.webgl-fallback .anticon {
+  color: #62b4ff;
+  font-size: 38px;
+}
+
+.webgl-fallback strong {
+  font-size: 16px;
+}
+
+.webgl-fallback span {
+  color: #9eb4cb;
+  font-size: 12px;
+}

@@ -198,17 +198,64 @@ class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
   }
 }
 
+class WebGLErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('[webgl-error]', error)
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="webgl-fallback">
+          <ThunderboltOutlined />
+          <strong>3D 渲染初始化失败</strong>
+          <span>请检查显卡驱动或关闭远程桌面后重新启动应用。</span>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function SceneStage() {
+  return (
+    <group>
+      <mesh scale={2.05}>
+        <icosahedronGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#4d9cf0" wireframe transparent opacity={0.16} />
+      </mesh>
+      <gridHelper args={[9, 36, '#5095d8', '#203b58']} position={[0, -1.54, 0]} />
+      <mesh position={[0, 0.2, -2.3]}>
+        <circleGeometry args={[2.65, 80]} />
+        <meshBasicMaterial color="#10243a" />
+      </mesh>
+      <mesh position={[0, 0.2, -2.25]}>
+        <torusGeometry args={[1.85, 0.025, 10, 120]} />
+        <meshBasicMaterial color="#4ea8ff" />
+      </mesh>
+      <hemisphereLight args={['#e7f5ff', '#1c2c46', 1.15]} />
+    </group>
+  )
+}
+
 function EditorScene({ scene, playing, speed, cameraAngle, brightness, bloomEnabled, bloomStrength, onPolarFrame, onPolarStats, modelAsset }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; bloomEnabled: boolean; bloomStrength: number; onPolarFrame: (frame: Uint8Array) => void; onPolarStats: (processingMs: number) => void; modelAsset?: ImportModelResult | null }) {
   return (
     <Canvas
       shadows="basic"
       dpr={[1, 1.5]}
-      camera={{ position: [0, 0.25, 4.15], fov: 38 }}
+      camera={{ position: [0, 0.2, 3.8], fov: 38 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
       onCreated={({ gl }) => { gl.domElement.dataset.webglReady = 'true' }}
     >
-      <color attach="background" args={['#0b1524']} />
-      <fog attach="fog" args={['#0b1524', 5.8, 10.5]} />
+      <color attach="background" args={['#17314d']} />
+      <fog attach="fog" args={['#17314d', 6.2, 11]} />
+      <SceneStage />
       <StudioEnvironment />
       <ambientLight intensity={0.95} />
       <directionalLight position={[4, 6, 4]} intensity={3.1} castShadow shadow-mapSize={[1024, 1024]} />
@@ -756,7 +803,9 @@ function App() {
             <div className="viewport-stage">
               <div className="square-stage">
                 <div className="viewport-canvas">
-                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} bloomEnabled={bloomEnabled} bloomStrength={bloomStrength} modelAsset={importedModel} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} onPolarStats={setPolarProcessingMs} />
+                  <WebGLErrorBoundary>
+                <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} bloomEnabled={bloomEnabled} bloomStrength={bloomStrength} modelAsset={importedModel} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} onPolarStats={setPolarProcessingMs} />
+              </WebGLErrorBoundary>
                   <div className="viewport-overlay top-left">
                     <div className="hud-label">CAMERA</div>
                     <div className="hud-value">{cameraAngle}° / 38 mm</div>

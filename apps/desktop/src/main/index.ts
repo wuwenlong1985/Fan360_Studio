@@ -62,8 +62,14 @@ function createWindow() {
     minHeight: 720,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#05090f',
+    backgroundColor: '#f3f5f9',
     title: 'Fan360 Studio',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#f3f5f9',
+      symbolColor: '#25354b',
+      height: 40,
+    },
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
