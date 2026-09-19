@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import type { SceneId } from './sceneCatalog'
-import { Text } from '@react-three/drei'
+import { Gltf, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import {
   AdditiveBlending,
@@ -19,6 +19,21 @@ type SceneProps = {
   second: string
   playing: boolean
   speed: number
+  modelUrl?: string
+}
+
+function useFallbackModel(): string | null {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    void import('@pmndrs/assets/models/bunny.glb.js').then((module) => {
+      if (active) setUrl(module.default)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+  return url
 }
 
 function AnimatedGroup({ playing, speed, children, spin = 0.65 }: SceneProps & { children: ReactNode; spin?: number }) {
@@ -420,13 +435,25 @@ function ParticleHead({ accent, second, playing, speed }: SceneProps) {
   )
 }
 
-function Custom({ accent, second, playing, speed }: SceneProps) {
+function Custom({ accent, second, playing, speed, modelUrl }: SceneProps) {
+  const fallbackModel = useFallbackModel()
+  const source = modelUrl ?? fallbackModel
   return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.2}>
-      <mesh><boxGeometry args={[1.9, 1.55, 1.9]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.42} /></mesh>
-      <Text font={FONT_URL} fontSize={0.65} anchorX="center" anchorY="middle">
-        IMPORT
-        <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.66} />
+    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.22}>
+      {source ? (
+        <Suspense fallback={<mesh><icosahedronGeometry args={[0.85, 1]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.55} /></mesh>}>
+          <Gltf src={source} scale={1.35} position={[0, -0.55, 0]} />
+        </Suspense>
+      ) : (
+        <mesh><icosahedronGeometry args={[0.85, 1]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.55} /></mesh>
+      )}
+      <mesh position={[0, -1.42, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[1.45, 0.025, 10, 120]} />
+        <meshBasicMaterial color={accent} />
+      </mesh>
+      <Text font={FONT_URL} fontSize={0.38} anchorX="center" anchorY="middle" position={[0, -1.15, 0.8]}>
+        CC0 GLB
+        <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.82} />
       </Text>
     </AnimatedGroup>
   )

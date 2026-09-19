@@ -29,6 +29,13 @@ export type DeviceSyncStatus = {
   timestamp: number
 }
 
+export type ImportModelResult = {
+  ok: boolean
+  name?: string
+  data?: Uint8Array
+  message: string
+}
+
 export type ExportFrameResult = {
   ok: boolean
   path?: string
@@ -47,6 +54,7 @@ export type DeviceApi = {
   disconnect: () => Promise<DeviceStatus>
   syncFrames: (frames: Uint8Array[], fps: number) => Promise<SyncFrameResult>
   exportFrames: (frames: Uint8Array[], fps: number) => Promise<ExportFrameResult>
+  importModel: () => Promise<ImportModelResult>
   onStatus: (listener: (status: DeviceStatus) => void) => () => void
   onSyncStatus: (listener: (status: DeviceSyncStatus) => void) => () => void
 }
@@ -58,5 +66,6 @@ export const DEVICE_CHANNELS = {
   status: 'device:tcp:status',
   syncFrames: 'device:sync:frames',
   exportFrames: 'device:export:frames',
+  importModel: 'model:import:glb',
   syncStatus: 'device:sync:status',
 } as const

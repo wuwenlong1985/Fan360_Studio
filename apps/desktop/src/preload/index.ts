@@ -7,6 +7,7 @@ const deviceApi: DeviceApi = {
   disconnect: () => ipcRenderer.invoke(DEVICE_CHANNELS.disconnect),
   syncFrames: (frames, fps) => ipcRenderer.invoke(DEVICE_CHANNELS.syncFrames, frames, fps),
   exportFrames: (frames, fps) => ipcRenderer.invoke(DEVICE_CHANNELS.exportFrames, frames, fps),
+  importModel: () => ipcRenderer.invoke(DEVICE_CHANNELS.importModel),
   onStatus: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, status: DeviceStatus) => listener(status)
     ipcRenderer.on(DEVICE_CHANNELS.status, handler)

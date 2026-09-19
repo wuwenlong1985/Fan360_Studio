@@ -12,8 +12,9 @@
     "package": "call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.node.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.web.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/electron-vite/bin/electron-vite.js build && call \"%npm_node_execpath%\" ../../node_modules/electron-builder/cli.js --win"
   },
   "dependencies": {
-    "@fan360/core": "*",
     "@ant-design/icons": "^6.1.0",
+    "@fan360/core": "*",
+    "@pmndrs/assets": "^1.7.0",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "antd": "^6.6.4",

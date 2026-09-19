@@ -1,6 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, type SaveDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { once } from 'node:events'
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Socket } from 'node:net'
 import {
@@ -410,6 +410,30 @@ function registerIpc() {
     return deviceStatus
   })
   ipcMain.handle(DEVICE_CHANNELS.syncFrames, (_event, frames: Uint8Array[], fps: number) => syncFramesToDevice(frames, fps))
+  ipcMain.handle(DEVICE_CHANNELS.importModel, async () => {
+    let filePath = process.env.FAN360_IMPORT_MODEL_PATH
+    if (!filePath) {
+      const options: OpenDialogOptions = {
+        title: '导入 GLB 模型',
+        filters: [{ name: 'glTF Binary', extensions: ['glb'] }],
+        properties: ['openFile'],
+      }
+      const result = mainWindow
+        ? await dialog.showOpenDialog(mainWindow, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled || !result.filePaths[0]) return { ok: false, message: '已取消导入' }
+      filePath = result.filePaths[0]
+    }
+    const data = await readFile(filePath)
+    if (data.byteLength > 100 * 1024 * 1024) return { ok: false, message: 'GLB 文件不能超过 100 MB' }
+    return {
+      ok: true,
+      name: filePath.split(/[\\/]/).pop() ?? 'model.glb',
+      data: new Uint8Array(data),
+      message: 'GLB 模型导入成功',
+    }
+  })
+
   ipcMain.handle(DEVICE_CHANNELS.exportFrames, async (_event, frames: Uint8Array[], fps: number) => {
     if (frames.length < 1 || frames.length > 255 || frames.some((frame) => frame.byteLength !== FRAME_BYTES)) {
       return { ok: false, message: `每帧必须为 ${FRAME_BYTES} B，帧数必须为 1 到 255` }

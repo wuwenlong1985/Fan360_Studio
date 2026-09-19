@@ -98,6 +98,8 @@ npm run build
 - 模拟设备整帧重建和 CRC 校验
 - Web Worker 极坐标转换，避免阻塞 3D UI
 - 20 个程序化 3D 场景注册表
+- CC0 Bunny GLB 离线加载
+- 用户本地 `.glb` 文件导入和 Blob 加载
 - 最多 8 秒动画录制和批量 `.fan360` 导出
 - v2 多帧 TCP 同步，支持保持圈数和源帧率
 - `.fan360` 单帧导出

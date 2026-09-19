@@ -115,7 +115,7 @@ function PolarCapture({
   return null
 }
 
-function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFrame }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; onPolarFrame: (frame: Uint8Array) => void }) {
+function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFrame, modelUrl }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; onPolarFrame: (frame: Uint8Array) => void; modelUrl?: string }) {
   return (
     <Canvas shadows="basic" dpr={[1, 2]} camera={{ position: [0.4, 0.2, 4.6], fov: 38 }}>
       <color attach="background" args={['#05090f']} />
@@ -127,6 +127,7 @@ function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFr
         <group rotation={[0.08, (cameraAngle * Math.PI) / 180, 0]}>
           <ProceduralScene
             sceneId={scene.id}
+            modelUrl={modelUrl}
             accent={scene.accent}
             second={scene.second}
             playing={playing}
@@ -408,6 +409,8 @@ function App() {
   const recordedFramesRef = useRef<Uint8Array[]>([])
   const [recording, setRecording] = useState(false)
   const [recordedCount, setRecordedCount] = useState(0)
+  const [importedModel, setImportedModel] = useState<{ name: string; url: string } | null>(null)
+  const importedUrlRef = useRef<string | null>(null)
   const [syncStatus, setSyncStatus] = useState<DeviceSyncStatus>({
     state: 'idle',
     transferredBytes: 0,
@@ -449,6 +452,25 @@ function App() {
     const timer = window.setTimeout(() => setRecording(false), 8000)
     return () => window.clearTimeout(timer)
   }, [recording])
+
+  useEffect(() => () => {
+    if (importedUrlRef.current) URL.revokeObjectURL(importedUrlRef.current)
+  }, [])
+
+  const handleImportModel = async () => {
+    const result = await deviceApi.importModel()
+    if (!result.ok || !result.data) {
+      message.info(result.message)
+      return
+    }
+    if (importedUrlRef.current) URL.revokeObjectURL(importedUrlRef.current)
+    const bytes = new Uint8Array(result.data)
+    const url = URL.createObjectURL(new Blob([bytes.buffer], { type: 'model/gltf-binary' }))
+    importedUrlRef.current = url
+    setImportedModel({ name: result.name ?? 'model.glb', url })
+    setSelectedScene(scenes.find((scene) => scene.id === 'custom') ?? scenes[0])
+    message.success(result.message)
+  }
 
   const handleRecordingToggle = () => {
     if (recording) {
@@ -535,6 +557,7 @@ function App() {
           <Tag color="cyan">{selectedScene.name}</Tag>
           <Tag variant="filled">3D 原型</Tag>
           {(recording || recordedCount > 0) && <Tag color={recording ? "red" : "green"}>REC {recordedCount}F</Tag>}
+          {importedModel && <Tag color="purple">{importedModel.name}</Tag>}
           <div className="panel-toggles">
             <Button size="small" type={showLeft ? 'primary' : 'default'} onClick={() => setShowLeft((value) => !value)}>左栏</Button>
             <Button size="small" type={showRight ? 'primary' : 'default'} onClick={() => setShowRight((value) => !value)}>右栏</Button>
@@ -598,7 +621,7 @@ function App() {
             ))}
           </div>
           <Divider />
-          <Button block icon={<ExperimentOutlined />}>
+          <Button block icon={<ExperimentOutlined />} onClick={() => void handleImportModel()}>
             导入 GLB / 视频 / LOGO
           </Button>
         </Sider>
@@ -628,7 +651,7 @@ function App() {
             <div className="viewport-stage">
               <div className="square-stage">
                 <div className="viewport-canvas">
-                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} />
+                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} modelUrl={importedModel?.url} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} />
                   <div className="viewport-overlay top-left">
                     <div className="hud-label">CAMERA</div>
                     <div className="hud-value">{cameraAngle}° / 38 mm</div>
