@@ -4,14 +4,21 @@ import { Gltf, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import {
   AdditiveBlending,
+  AnimationMixer,
+  Box3,
   CanvasTexture,
   DoubleSide,
   Float32BufferAttribute,
   Group,
+  LoadingManager,
   Mesh,
   Points,
+  Texture,
+  Vector3,
   type BufferGeometry,
 } from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import type { ImportModelResult } from '../../../shared/device'
 const FONT_URL = new URL('../assets/helvetiker_regular.typeface.json', import.meta.url).href
 
 type SceneProps = {
@@ -19,7 +26,7 @@ type SceneProps = {
   second: string
   playing: boolean
   speed: number
-  modelUrl?: string
+  modelAsset?: ImportModelResult | null
 }
 
 function useFallbackModel(): string | null {
@@ -435,12 +442,87 @@ function ParticleHead({ accent, second, playing, speed }: SceneProps) {
   )
 }
 
-function Custom({ accent, second, playing, speed, modelUrl }: SceneProps) {
+function ImportedModel({ asset, speed, accent, second }: { asset: ImportModelResult; speed: number; accent: string; second: string }) {
+  const [root, setRoot] = useState<Group | null>(null)
+  const rootRef = useRef<Group | null>(null)
+  const mixerRef = useRef<AnimationMixer | null>(null)
+
+  useEffect(() => {
+    if (!asset.files?.length || !asset.mainFile) return
+    let active = true
+    const urls: string[] = []
+    const resolved = new Map<string, string>()
+    for (const file of asset.files) {
+      const url = URL.createObjectURL(new Blob([new Uint8Array(file.data).buffer], { type: file.mime }))
+      urls.push(url)
+      resolved.set(file.name, url)
+      resolved.set(file.relativePath, url)
+      resolved.set('./' + file.relativePath, url)
+    }
+    const manager = new LoadingManager()
+    manager.setURLModifier((url) => {
+      if (/^(data:|blob:|https?:)/i.test(url)) return url
+      const normalized = decodeURIComponent(url.split('?')[0]).replaceAll('\\', '/').replace(/^\.\//, '')
+      return resolved.get(normalized) ?? resolved.get(normalized.split('/').pop() ?? '') ?? url
+    })
+    const loader = new GLTFLoader(manager)
+    const main = asset.files.find((file) => file.name === asset.mainFile)
+    if (!main) return
+    const onLoad = (gltf: { scene: Group; animations: import('three').AnimationClip[] }) => {
+      if (!active) return
+      const scene = gltf.scene
+      const box = new Box3().setFromObject(scene)
+      const size = box.getSize(new Vector3())
+      const center = box.getCenter(new Vector3())
+      const maxDimension = Math.max(size.x, size.y, size.z, 0.001)
+      scene.position.sub(center)
+      const wrapper = new Group()
+      wrapper.scale.setScalar(2.15 / maxDimension)
+      wrapper.add(scene)
+      if (gltf.animations.length > 0) {
+        const mixer = new AnimationMixer(scene)
+        mixer.clipAction(gltf.animations[0]).play()
+        mixerRef.current = mixer
+      }
+      rootRef.current = wrapper
+      setRoot(wrapper)
+    }
+    const onError = (error: unknown) => console.error('[model-import]', error)
+    const data = new Uint8Array(main.data)
+    if (main.name.toLowerCase().endsWith('.glb')) loader.parse(data.buffer as ArrayBuffer, '', onLoad, onError)
+    else loader.parse(new TextDecoder().decode(data), '', onLoad, onError)
+    return () => {
+      active = false
+      mixerRef.current?.stopAllAction()
+      mixerRef.current = null
+      rootRef.current?.traverse((object) => {
+        if (object instanceof Mesh) {
+          object.geometry.dispose()
+          const materials = Array.isArray(object.material) ? object.material : [object.material]
+          materials.forEach((material) => {
+            Object.values(material).forEach((value) => { if (value instanceof Texture) value.dispose() })
+            material.dispose()
+          })
+        }
+      })
+      rootRef.current = null
+      urls.forEach(URL.revokeObjectURL)
+    }
+  }, [asset])
+
+  useFrame((_, delta) => mixerRef.current?.update(delta * speed))
+  if (!root) return <mesh><icosahedronGeometry args={[0.85, 1]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.55} /></mesh>
+  return <primitive object={root} />
+}
+
+function Custom({ accent, second, playing, speed, modelAsset }: SceneProps) {
   const fallbackModel = useFallbackModel()
-  const source = modelUrl ?? fallbackModel
+  const source = fallbackModel
   return (
     <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.22}>
-      {source ? (
+      {modelAsset ? (
+        <ImportedModel asset={modelAsset} speed={speed} accent={accent} second={second} />
+      ) : source ? (
         <Suspense fallback={<mesh><icosahedronGeometry args={[0.85, 1]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.55} /></mesh>}>
           <Gltf src={source} scale={1.35} position={[0, -0.55, 0]} />
         </Suspense>
@@ -452,7 +534,7 @@ function Custom({ accent, second, playing, speed, modelUrl }: SceneProps) {
         <meshBasicMaterial color={accent} />
       </mesh>
       <Text font={FONT_URL} fontSize={0.38} anchorX="center" anchorY="middle" position={[0, -1.15, 0.8]}>
-        CC0 GLB
+        {modelAsset ? "LOCAL MODEL" : "CC0 GLB"}
         <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.82} />
       </Text>
     </AnimatedGroup>

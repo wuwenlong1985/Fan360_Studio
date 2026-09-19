@@ -21,7 +21,7 @@ const fallbackApi: DeviceApi = {
     return { ok: true, status }
   },
   exportFrames: async (frames) => ({ ok: false, message: `浏览器预览模式无法写入本地文件（${frames.length} 帧）` }),
-  importModel: async () => ({ ok: false, message: '浏览器预览模式无法打开本地 GLB 文件' }),
+  importModel: async () => ({ ok: false, message: '浏览器预览模式无法打开本地 3D 模型文件' }),
   syncFrames: async (frames) => {
     await wait(250)
     return { ok: true, bytesSent: frames.reduce((total, frame) => total + frame.byteLength, 0), message: `浏览器预览模式：已模拟同步 ${frames.length} 帧` }

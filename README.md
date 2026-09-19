@@ -103,7 +103,8 @@ npm run build
 - Bloom 辉光进入真实设备帧和导出数据
 - Worker 极坐标转换耗时统计
 - `.fanproj` 项目保存与恢复
-- 用户本地 `.glb` 文件导入和 Blob 加载
+- 用户本地 `.glb`、`.gltf + .bin + 贴图` 多文件导入
+- 外部 glTF URI 到 Blob URL 的 LoadingManager 映射
 - 最多 8 秒动画录制和批量 `.fan360` 导出
 - v2 多帧 TCP 同步，支持保持圈数和源帧率
 - `.fan360` 单帧导出

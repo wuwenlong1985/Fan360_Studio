@@ -29,10 +29,17 @@ export type DeviceSyncStatus = {
   timestamp: number
 }
 
+export type ImportedModelFile = {
+  name: string
+  relativePath: string
+  mime: string
+  data: Uint8Array
+}
+
 export type ImportModelResult = {
   ok: boolean
-  name?: string
-  data?: Uint8Array
+  mainFile?: string
+  files?: ImportedModelFile[]
   message: string
 }
 
