@@ -1,3 +1,4 @@
+export * from './bloom'
 export * from './crc32'
 export * from './file'
 export * from './frame'

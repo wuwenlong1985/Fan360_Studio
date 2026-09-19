@@ -5,6 +5,7 @@ import {
   SECTOR_BYTES,
   SECTOR_DURATION_US,
   SECTOR_PACKET_BYTES,
+  applyBloom,
   CONTROL_MESSAGE_TYPE,
   ControlMessageDecoder,
   concatPacketPackets,
@@ -96,6 +97,30 @@ describe('sector packet', () => {
     const packet = packSectorPacket(frame, 0)
     packet[20] ^= 0xff
     expect(() => parseSectorPacket(packet)).toThrow('CRC mismatch')
+  })
+})
+
+describe('bloom postprocess', () => {
+  it('adds glow around bright pixels', () => {
+    const width = 5
+    const height = 5
+    const image = new Uint8Array(width * height * 4)
+    for (let index = 0; index < width * height; index += 1) image[index * 4 + 3] = 255
+    const center = (2 * width + 2) * 4
+    image[center] = 255
+    image[center + 1] = 255
+    image[center + 2] = 255
+    const bloomed = applyBloom(image, width, height, { threshold: 0.5, strength: 1, radius: 1, downsample: 2 })
+    const neighbor = (2 * width + 3) * 4
+    expect(bloomed[neighbor]).toBeGreaterThan(0)
+    expect(bloomed.length).toBe(image.length)
+  })
+
+  it('returns an unchanged copy when strength is zero', () => {
+    const image = new Uint8Array([10, 20, 30, 40, 200, 210, 220, 230])
+    const output = applyBloom(image, 2, 1, { strength: 0 })
+    expect(output).toEqual(image)
+    expect(output).not.toBe(image)
   })
 })
 

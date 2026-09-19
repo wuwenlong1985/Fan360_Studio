@@ -100,6 +100,8 @@ npm run build
 - 20 个程序化 3D 场景注册表
 - CC0 Bunny GLB 离线加载
 - CC0 Studio HDR 环境照明和 PBR 反射
+- Bloom 辉光进入真实设备帧和导出数据
+- Worker 极坐标转换耗时统计
 - `.fanproj` 项目保存与恢复
 - 用户本地 `.glb` 文件导入和 Blob 加载
 - 最多 8 秒动画录制和批量 `.fan360` 导出

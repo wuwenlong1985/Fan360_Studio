@@ -52,11 +52,17 @@ const { Text, Title } = Typography
 function PolarCapture({
   playing,
   brightness,
+  bloomEnabled,
+  bloomStrength,
   onFrame,
+  onStats,
 }: {
   playing: boolean
   brightness: number
+  bloomEnabled: boolean
+  bloomStrength: number
   onFrame: (frame: Uint8Array) => void
+  onStats: (processingMs: number) => void
 }) {
   const { gl, scene, camera } = useThree()
   const size = 768
@@ -77,12 +83,15 @@ function PolarCapture({
   const requestId = useRef(0)
   const lastCapture = useRef(0)
   const onFrameRef = useRef(onFrame)
+  const onStatsRef = useRef(onStats)
   onFrameRef.current = onFrame
+  onStatsRef.current = onStats
 
   useEffect(() => {
-    worker.onmessage = (event: MessageEvent<{ id: number; frame?: ArrayBuffer; error?: string }>) => {
+    worker.onmessage = (event: MessageEvent<{ id: number; frame?: ArrayBuffer; processingMs?: number; error?: string }>) => {
       workerBusy.current = false
       if (event.data.frame) onFrameRef.current(new Uint8Array(event.data.frame))
+      if (typeof event.data.processingMs === 'number') onStatsRef.current(event.data.processingMs)
       if (event.data.error) console.error('[polar-worker]', event.data.error)
     }
     return () => {
@@ -108,7 +117,7 @@ function PolarCapture({
         pixels: transferable,
         width: size,
         height: size,
-        options: { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear' },
+        options: { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear', bloom: bloomEnabled ? { threshold: 0.62, strength: bloomStrength, radius: 6, downsample: 4 } : undefined },
       },
       [transferable],
     )
@@ -136,7 +145,7 @@ function StudioEnvironment() {
   )
 }
 
-function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFrame, modelUrl }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; onPolarFrame: (frame: Uint8Array) => void; modelUrl?: string }) {
+function EditorScene({ scene, playing, speed, cameraAngle, brightness, bloomEnabled, bloomStrength, onPolarFrame, onPolarStats, modelUrl }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; bloomEnabled: boolean; bloomStrength: number; onPolarFrame: (frame: Uint8Array) => void; onPolarStats: (processingMs: number) => void; modelUrl?: string }) {
   return (
     <Canvas shadows="basic" dpr={[1, 2]} camera={{ position: [0.4, 0.2, 4.6], fov: 38 }}>
       <color attach="background" args={['#05090f']} />
@@ -157,7 +166,7 @@ function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFr
           />
         </group>
       </Float>
-      <PolarCapture playing={playing} brightness={brightness} onFrame={onPolarFrame} />
+      <PolarCapture playing={playing} brightness={brightness} bloomEnabled={bloomEnabled} bloomStrength={bloomStrength} onFrame={onPolarFrame} onStats={onPolarStats} />
       <ContactShadows position={[0, -1.55, 0]} opacity={0.45} scale={5} blur={2.7} far={4} color="#000000" />
       <mesh position={[0, -1.55, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[2.25, 80]} />
@@ -427,6 +436,9 @@ function App() {
   const [showRight, setShowRight] = useState(true)
   const [showBottom, setShowBottom] = useState(false)
   const [showCircleMask, setShowCircleMask] = useState(true)
+  const [bloomEnabled, setBloomEnabled] = useState(true)
+  const [bloomStrength, setBloomStrength] = useState(0.35)
+  const [polarProcessingMs, setPolarProcessingMs] = useState(0)
   const polarFrameRef = useRef<Uint8Array | null>(null)
   const recordedFramesRef = useRef<Uint8Array[]>([])
   const [recording, setRecording] = useState(false)
@@ -718,7 +730,7 @@ function App() {
             <div className="viewport-stage">
               <div className="square-stage">
                 <div className="viewport-canvas">
-                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} modelUrl={importedModel?.url} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} />
+                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} bloomEnabled={bloomEnabled} bloomStrength={bloomStrength} modelUrl={importedModel?.url} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} onPolarStats={setPolarProcessingMs} />
                   <div className="viewport-overlay top-left">
                     <div className="hud-label">CAMERA</div>
                     <div className="hud-value">{cameraAngle}° / 38 mm</div>
@@ -784,6 +796,7 @@ function App() {
                   <Col span={12}><Statistic title="径向 LED" value={80} suffix="个" /></Col>
                   <Col span={12}><Statistic title="单圈耗时" value={60} suffix="ms" /></Col>
                   <Col span={12}><Statistic title="角度窗口" value={166.7} suffix="µs" precision={1} /></Col>
+                  <Col span={12}><Statistic title="Worker 转换" value={polarProcessingMs} suffix="ms" precision={1} /></Col>
                 </Row>
                 <Divider />
                 <div className="link-row"><span>单角度片</span><b>320 B</b></div>
@@ -859,7 +872,12 @@ function App() {
                     <Form.Item label="输出亮度">
                       <Slider value={brightness} onChange={setBrightness} min={0} max={100} />
                     </Form.Item>
-                    <Form.Item label="Bloom 辉光"><Switch defaultChecked /></Form.Item>
+                    <Form.Item label="Bloom 辉光">
+                      <Switch checked={bloomEnabled} onChange={setBloomEnabled} />
+                    </Form.Item>
+                    <Form.Item label="Bloom 强度">
+                      <Slider value={bloomStrength} onChange={setBloomStrength} min={0} max={1} step={0.05} disabled={!bloomEnabled} />
+                    </Form.Item>
                     <Form.Item label="径向边缘增强"><Switch defaultChecked /></Form.Item>
                     <Form.Item label="低亮度抖动"><Switch defaultChecked /></Form.Item>
                     <Form.Item label="Gamma 模式">
