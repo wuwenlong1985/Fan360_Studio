@@ -104,3 +104,17 @@ npm run build
 - v2 多帧 TCP 同步，支持保持圈数和源帧率
 - `.fan360` 单帧导出
 - 核心数据与协议层 15 个单元测试
+
+
+## Windows 打包
+
+```powershell
+npm run package
+```
+
+已生成：
+
+- 安装器：`C:\Users\Administrator\Desktop\deepseek\apps\desktop\release\Fan360-Studio-0.1.0-Setup.exe`
+- 绿色版：`C:\Users\Administrator\Desktop\deepseek\apps\desktop\release\win-unpacked\Fan360 Studio.exe`
+
+绿色版已经从 `app.asar` 独立启动验证，不依赖 Vite 开发服务器。

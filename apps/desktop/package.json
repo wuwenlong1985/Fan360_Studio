@@ -49,6 +49,9 @@
         "nsis"
       ],
       "artifactName": "Fan360-Studio-${version}-Setup.${ext}"
-    }
-  }
+    },
+    "electronDist": "../../node_modules/electron/dist",
+    "npmRebuild": false
+  },
+  "author": "Fan360 Studio"
 }
