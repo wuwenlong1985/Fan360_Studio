@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Float, OrbitControls, Sparkles } from '@react-three/drei'
-import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget, type Group } from 'three'
+import { ContactShadows, Float, OrbitControls } from '@react-three/drei'
+import { ProceduralScene } from './scenes/ProceduralScene'
+import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget } from 'three'
 import { deviceApi } from './services/deviceClient'
 import type { DeviceStatus, DeviceSyncStatus } from '../../shared/device'
 import {
@@ -77,68 +78,6 @@ const scenes: SceneItem[] = [
   { id: 'custom', name: '自定义模型', category: '我的', emoji: '+', accent: '#68758b', second: '#b6c5d8' },
 ]
 
-const accentFor = (scene: SceneItem) => [scene.accent, scene.second]
-
-function Strawberry({ accent, second }: { accent: string; second: string }) {
-  const group = useRef<Group>(null)
-  const seeds = useMemo(
-    () =>
-      Array.from({ length: 28 }, (_, index) => {
-        const t = (index + 0.5) / 28
-        const phi = Math.acos(1 - 2 * t)
-        const theta = Math.PI * (1 + Math.sqrt(5)) * (index + 0.5)
-        const radius = 1.01
-        return [
-          radius * Math.sin(phi) * Math.cos(theta),
-          radius * Math.cos(phi) * 1.2,
-          radius * Math.sin(phi) * Math.sin(theta),
-        ] as [number, number, number]
-      }),
-    [],
-  )
-
-  useFrame((_, delta) => {
-    if (group.current) group.current.rotation.y += delta * 0.62
-  })
-
-  return (
-    <group ref={group} position={[0, -0.05, 0]}>
-      <mesh castShadow receiveShadow scale={[1, 1.2, 1]}>
-        <sphereGeometry args={[1, 64, 64]} />
-        <meshPhysicalMaterial
-          color={accent}
-          roughness={0.28}
-          metalness={0.05}
-          clearcoat={0.55}
-          clearcoatRoughness={0.18}
-          emissive={accent}
-          emissiveIntensity={0.08}
-        />
-      </mesh>
-      {seeds.map((position, index) => (
-        <mesh key={index} position={position} scale={0.055}>
-          <sphereGeometry args={[1, 10, 10]} />
-          <meshStandardMaterial color="#ffd166" emissive="#ff9d2e" emissiveIntensity={0.35} />
-        </mesh>
-      ))}
-      {[0, 1, 2, 3, 4].map((index) => (
-        <mesh
-          key={index}
-          castShadow
-          position={[(index - 2) * 0.27, 1.22 - Math.abs(index - 2) * 0.06, 0]}
-          rotation={[0, 0, (index - 2) * 0.24]}
-        >
-          <coneGeometry args={[0.16, 0.72, 7]} />
-          <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.2} />
-        </mesh>
-      ))}
-      <pointLight position={[-2.3, 2.2, 2.8]} color="#54d9ff" intensity={5} distance={8} />
-      <pointLight position={[2.8, -1.2, 1.8]} color="#a45cff" intensity={3} distance={7} />
-      <Sparkles count={70} scale={[4.2, 3.2, 4.2]} size={1.5} speed={0.28} color="#6fe9ff" />
-    </group>
-  )
-}
-
 function PolarCapture({
   playing,
   brightness,
@@ -208,8 +147,6 @@ function PolarCapture({
 }
 
 function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFrame }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; onPolarFrame: (frame: Uint8Array) => void }) {
-  const [accent, second] = accentFor(scene)
-
   return (
     <Canvas shadows="basic" dpr={[1, 2]} camera={{ position: [0.4, 0.2, 4.6], fov: 38 }}>
       <color attach="background" args={['#05090f']} />
@@ -219,7 +156,13 @@ function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFr
       <pointLight position={[-4, 0, -2]} color="#207cff" intensity={4} />
       <Float speed={playing ? 1.2 * speed : 0} rotationIntensity={0.16} floatIntensity={0.28}>
         <group rotation={[0.08, (cameraAngle * Math.PI) / 180, 0]}>
-          <Strawberry accent={accent} second={second} />
+          <ProceduralScene
+            sceneId={scene.id}
+            accent={scene.accent}
+            second={scene.second}
+            playing={playing}
+            speed={speed}
+          />
         </group>
       </Float>
       <PolarCapture playing={playing} brightness={brightness} onFrame={onPolarFrame} />

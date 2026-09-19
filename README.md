@@ -97,5 +97,6 @@ npm run build
 - TCP SYNC_BEGIN → 360 包数据 → SYNC_COMMIT → SYNC_ACK → PLAY 协议
 - 模拟设备整帧重建和 CRC 校验
 - Web Worker 极坐标转换，避免阻塞 3D UI
+- 20 个程序化 3D 场景注册表
 - `.fan360` 单帧导出
 - 核心数据与协议层 14 个单元测试
