@@ -20,6 +20,10 @@ const fallbackApi: DeviceApi = {
     }
     return { ok: true, status }
   },
+  syncFrame: async (frame) => {
+    await wait(250)
+    return { ok: true, bytesSent: frame.byteLength, message: '浏览器预览模式：已模拟同步' }
+  },
   disconnect: async () => {
     await wait(150)
     return {
@@ -30,6 +34,7 @@ const fallbackApi: DeviceApi = {
     }
   },
   onStatus: () => () => undefined,
+  onSyncStatus: () => () => undefined,
 }
 
 export const deviceApi: DeviceApi = window.fan360?.device ?? fallbackApi

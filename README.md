@@ -92,4 +92,8 @@ npm run build
 - TCP IP 输入、固定端口 5000、手动连接/断开
 - 真实 Electron Renderer 到 Main Process 的 TCP 连接验证
 - 360×80×4B 帧模型、336B 角度片、CRC32 和 .fan360 文件格式
-- 核心数据层 8 个单元测试
+- 3D RenderTarget 到 360×80 极坐标帧的真实采样
+- 真实极坐标数据驱动设备圆盘预览和数据矩阵
+- TCP SYNC_BEGIN → 360 包数据 → SYNC_COMMIT → SYNC_ACK → PLAY 协议
+- 模拟设备整帧重建和 CRC 校验
+- 核心数据与协议层 14 个单元测试

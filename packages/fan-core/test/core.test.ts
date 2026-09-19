@@ -5,13 +5,22 @@ import {
   SECTOR_BYTES,
   SECTOR_DURATION_US,
   SECTOR_PACKET_BYTES,
+  CONTROL_MESSAGE_TYPE,
+  ControlMessageDecoder,
+  concatPacketPackets,
   createFanFrame,
   crc32,
+  decodeControlMessage,
+  decodeSyncBeginPayload,
+  encodeControlMessage,
+  encodeSyncBeginPayload,
   decodeFanFile,
   encodeFanFile,
   getLedPixel,
   packSectorPacket,
+  packFrameToPackets,
   parseSectorPacket,
+  rgbaToFanFrame,
   setLedPixel,
 } from '../src'
 
@@ -38,6 +47,34 @@ describe('frame pixels', () => {
   })
 })
 
+describe('3D image to polar frame conversion', () => {
+  it('maps the right side to 0 degrees and the left side to 180 degrees', () => {
+    const width = 21
+    const height = 21
+    const data = new Uint8Array(width * height * 4)
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 4
+        const left = x < width / 2
+        data[offset] = left ? 255 : 0
+        data[offset + 1] = 0
+        data[offset + 2] = left ? 0 : 255
+        data[offset + 3] = 255
+      }
+    }
+    const frame = rgbaToFanFrame({ data, width, height }, { centerX: 10, centerY: 10, radius: 8, sampling: 'nearest' })
+    expect(frame.byteLength).toBe(FRAME_BYTES)
+    expect(getLedPixel(frame, 0, 79).b).toBe(255)
+    expect(getLedPixel(frame, 180, 79).r).toBe(255)
+  })
+
+  it('applies brightness and gamma', () => {
+    const data = new Uint8Array(3 * 3 * 4).fill(255)
+    const frame = rgbaToFanFrame({ data, width: 3, height: 3 }, { centerX: 1, centerY: 1, radius: 0.5, brightness: 0.5, gamma: 2, sampling: 'nearest' })
+    expect(getLedPixel(frame, 0, 0)).toEqual({ brightness: 128, r: 255, g: 255, b: 255 })
+  })
+})
+
 describe('sector packet', () => {
   it('packs and parses one 336 byte sector', () => {
     const frame = createFanFrame()
@@ -57,6 +94,57 @@ describe('sector packet', () => {
     const packet = packSectorPacket(frame, 0)
     packet[20] ^= 0xff
     expect(() => parseSectorPacket(packet)).toThrow('CRC mismatch')
+  })
+})
+
+describe('TCP control protocol', () => {
+  it('round-trips SYNC_BEGIN metadata', () => {
+    const payload = encodeSyncBeginPayload({
+      frameCount: 2,
+      frameBytes: FRAME_BYTES,
+      sectorPacketBytes: SECTOR_PACKET_BYTES,
+      payloadCrc32: 123456,
+      totalPacketBytes: SECTOR_PACKET_BYTES * 360 * 2,
+    })
+    expect(decodeSyncBeginPayload(payload)).toEqual({
+      frameCount: 2,
+      frameBytes: FRAME_BYTES,
+      sectorPacketBytes: SECTOR_PACKET_BYTES,
+      payloadCrc32: 123456,
+      totalPacketBytes: SECTOR_PACKET_BYTES * 360 * 2,
+    })
+  })
+
+  it('decodes fragmented control messages', () => {
+    const hello = encodeControlMessage(CONTROL_MESSAGE_TYPE.HELLO, 7, new Uint8Array([1, 2, 3]))
+    const commit = encodeControlMessage(CONTROL_MESSAGE_TYPE.SYNC_COMMIT, 8)
+    const stream = new Uint8Array(hello.byteLength + commit.byteLength)
+    stream.set(hello)
+    stream.set(commit, hello.byteLength)
+    const decoder = new ControlMessageDecoder()
+    expect(decoder.push(stream.slice(0, 5))).toHaveLength(0)
+    const first = decoder.push(stream.slice(5, 23))
+    expect(first).toHaveLength(1)
+    expect(first[0].type).toBe(CONTROL_MESSAGE_TYPE.HELLO)
+    expect(Array.from(first[0].payload)).toEqual([1, 2, 3])
+    const second = decoder.push(stream.slice(23))
+    expect(second).toHaveLength(1)
+    expect(second[0].type).toBe(CONTROL_MESSAGE_TYPE.SYNC_COMMIT)
+  })
+
+  it('detects control message corruption', () => {
+    const message = encodeControlMessage(CONTROL_MESSAGE_TYPE.SYNC_COMMIT, 9)
+    message[10] ^= 0xff
+    expect(() => decodeControlMessage(message)).toThrow('CRC mismatch')
+  })
+
+  it('packs one full frame into 360 sector packets', () => {
+    const packets = packFrameToPackets(createFanFrame(), 100)
+    expect(packets).toHaveLength(360)
+    expect(packets[0].byteLength).toBe(SECTOR_PACKET_BYTES)
+    expect(parseSectorPacket(packets[0]).angleIndex).toBe(0)
+    expect(parseSectorPacket(packets[359]).angleIndex).toBe(359)
+    expect(concatPacketPackets(packets).byteLength).toBe(360 * SECTOR_PACKET_BYTES)
   })
 })
 

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, Float, OrbitControls, Sparkles } from '@react-three/drei'
-import type { Group } from 'three'
+import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget, type Group } from 'three'
+import { rgbaToFanFrame } from '@fan360/core'
 import { deviceApi } from './services/deviceClient'
-import type { DeviceStatus } from '../../shared/device'
+import type { DeviceStatus, DeviceSyncStatus } from '../../shared/device'
 import {
   CloudUploadOutlined,
   DownloadOutlined,
@@ -138,7 +139,54 @@ function Strawberry({ accent, second }: { accent: string; second: string }) {
   )
 }
 
-function EditorScene({ scene, playing, speed, cameraAngle }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number }) {
+function PolarCapture({
+  playing,
+  brightness,
+  onFrame,
+}: {
+  playing: boolean
+  brightness: number
+  onFrame: (frame: Uint8Array) => void
+}) {
+  const { gl, scene, camera } = useThree()
+  const size = 768
+  const target = useMemo(
+    () =>
+      new WebGLRenderTarget(size, size, {
+        minFilter: LinearFilter,
+        magFilter: LinearFilter,
+        format: RGBAFormat,
+        type: UnsignedByteType,
+        colorSpace: SRGBColorSpace,
+      }),
+    [],
+  )
+  const pixels = useMemo(() => new Uint8Array(size * size * 4), [])
+  const lastCapture = useRef(0)
+
+  useEffect(() => () => target.dispose(), [target])
+
+  useFrame((state) => {
+    const interval = playing ? 0.25 : 1
+    if (state.clock.elapsedTime - lastCapture.current < interval) return
+    lastCapture.current = state.clock.elapsedTime
+    const previousTarget = gl.getRenderTarget()
+    gl.setRenderTarget(target)
+    gl.render(scene, camera)
+    gl.readRenderTargetPixels(target, 0, 0, size, size, pixels)
+    gl.setRenderTarget(previousTarget)
+    onFrame(
+      rgbaToFanFrame(
+        { data: pixels, width: size, height: size, flipY: true },
+        { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear' },
+      ),
+    )
+  }, 1)
+
+  return null
+}
+
+function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFrame }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; onPolarFrame: (frame: Uint8Array) => void }) {
   const [accent, second] = accentFor(scene)
 
   return (
@@ -153,6 +201,7 @@ function EditorScene({ scene, playing, speed, cameraAngle }: { scene: SceneItem;
           <Strawberry accent={accent} second={second} />
         </group>
       </Float>
+      <PolarCapture playing={playing} brightness={brightness} onFrame={onPolarFrame} />
       <ContactShadows position={[0, -1.55, 0]} opacity={0.45} scale={5} blur={2.7} far={4} color="#000000" />
       <mesh position={[0, -1.55, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[2.25, 80]} />
@@ -213,13 +262,45 @@ function useCanvasFrame(
   }, [canvasRef, callback])
 }
 
-function DevicePreview({ playing, speed, brightness, angle }: { playing: boolean; speed: number; brightness: number; angle: number }) {
+function buildPolarPreview(frame: Uint8Array, size: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+  ctx.clearRect(0, 0, size, size)
+  const center = size / 2
+  const maxRadius = size * 0.49
+  for (let angle = 0; angle < 360; angle += 1) {
+    const theta = (angle * Math.PI) / 180
+    for (let led = 0; led < 80; led += 1) {
+      const offset = angle * 320 + led * 4
+      const brightness = frame[offset] / 255
+      if (brightness <= 0.002) continue
+      const radius = ((led + 0.5) / 80) * maxRadius
+      const x = center + Math.cos(theta) * radius
+      const y = center + Math.sin(theta) * radius
+      ctx.fillStyle = `rgba(${frame[offset + 1]}, ${frame[offset + 2]}, ${frame[offset + 3]}, ${brightness})`
+      ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5)
+    }
+  }
+  return canvas
+}
+
+function DevicePreview({ playing, speed, brightness, angle, frameRef }: { playing: boolean; speed: number; brightness: number; angle: number; frameRef: React.RefObject<Uint8Array | null> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const state = useRef({ playing, speed, brightness, angle })
-  state.current = { playing, speed, brightness, angle }
+  const state = useRef({ playing, speed, brightness, angle, frameRef })
+  const polarCache = useRef<{ frame: Uint8Array | null; canvas: HTMLCanvasElement | null }>({ frame: null, canvas: null })
+  state.current = { playing, speed, brightness, angle, frameRef }
 
   useCanvasFrame(canvasRef, (ctx, width, height, time) => {
-    const { playing: isPlaying, speed: currentSpeed, brightness: currentBrightness, angle: baseAngle } = state.current
+    const { playing: isPlaying, speed: currentSpeed, brightness: currentBrightness, angle: baseAngle, frameRef: currentFrameRef } = state.current
+    const polarFrame = currentFrameRef.current
+    canvasRef.current?.setAttribute('data-has-polar-frame', polarFrame ? 'true' : 'false')
+    if (polarFrame && polarCache.current.frame !== polarFrame) {
+      polarCache.current.frame = polarFrame
+      polarCache.current.canvas = buildPolarPreview(polarFrame, 520)
+    }
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const w = Math.max(320, width)
     const h = Math.max(220, height)
@@ -243,18 +324,21 @@ function DevicePreview({ playing, speed, brightness, angle }: { playing: boolean
     ctx.fill()
     ctx.restore()
 
-    const disk = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
-    disk.addColorStop(0, `rgba(44, 239, 255, ${0.18 + currentBrightness / 500})`)
-    disk.addColorStop(0.35, `rgba(72, 76, 255, ${0.2 + currentBrightness / 460})`)
-    disk.addColorStop(0.78, `rgba(255, 60, 195, ${0.16 + currentBrightness / 520})`)
-    disk.addColorStop(1, 'rgba(0,0,0,0)')
-
     ctx.save()
     ctx.beginPath()
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
     ctx.clip()
-    ctx.fillStyle = disk
-    ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2)
+    if (polarCache.current.canvas) {
+      ctx.drawImage(polarCache.current.canvas, centerX - radius, centerY - radius, radius * 2, radius * 2)
+    } else {
+      const disk = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
+      disk.addColorStop(0, `rgba(44, 239, 255, ${0.18 + currentBrightness / 500})`)
+      disk.addColorStop(0.35, `rgba(72, 76, 255, ${0.2 + currentBrightness / 460})`)
+      disk.addColorStop(0.78, `rgba(255, 60, 195, ${0.16 + currentBrightness / 520})`)
+      disk.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = disk
+      ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2)
+    }
 
     ctx.globalAlpha = 0.22
     for (let ring = 1; ring <= 11; ring += 1) {
@@ -332,9 +416,17 @@ function DevicePreview({ playing, speed, brightness, angle }: { playing: boolean
     const cellH = (matrixH - 42 - gap * (rows - 1)) / rows
     for (let x = 0; x < columns; x += 1) {
       for (let y = 0; y < rows; y += 1) {
-        const value = (Math.sin(x * 0.19 + y * 0.31 + time * 0.0015) + 1) / 2
-        const hue = 176 + value * 90 + currentBrightness * 0.35
-        ctx.fillStyle = `hsl(${hue % 360}, 86%, ${18 + value * 38}%)`
+        if (polarFrame) {
+          const angleIndex = Math.round((x / Math.max(1, columns - 1)) * 359)
+          const ledIndex = Math.round((y / Math.max(1, rows - 1)) * 79)
+          const offset = angleIndex * 320 + ledIndex * 4
+          const value = polarFrame[offset] / 255
+          ctx.fillStyle = `rgb(${Math.round(polarFrame[offset + 1] * value)}, ${Math.round(polarFrame[offset + 2] * value)}, ${Math.round(polarFrame[offset + 3] * value)})`
+        } else {
+          const value = (Math.sin(x * 0.19 + y * 0.31 + time * 0.0015) + 1) / 2
+          const hue = 176 + value * 90 + currentBrightness * 0.35
+          ctx.fillStyle = `hsl(${hue % 360}, 86%, ${18 + value * 38}%)`
+        }
         ctx.fillRect(matrixX + 12 + x * (cellW + gap), matrixY + 32 + y * (cellH + gap), cellW, cellH)
       }
     }
@@ -378,6 +470,15 @@ function App() {
   const [showRight, setShowRight] = useState(true)
   const [showBottom, setShowBottom] = useState(false)
   const [showCircleMask, setShowCircleMask] = useState(true)
+  const polarFrameRef = useRef<Uint8Array | null>(null)
+  const [syncStatus, setSyncStatus] = useState<DeviceSyncStatus>({
+    state: 'idle',
+    transferredBytes: 0,
+    totalBytes: 0,
+    progress: 0,
+    message: '等待上传 3D 帧',
+    timestamp: Date.now(),
+  })
 
   const connected = deviceStatus.state === 'connected'
   const deviceBadgeStatus = connected
@@ -396,9 +497,13 @@ function App() {
     const unsubscribe = deviceApi.onStatus((status) => {
       if (!disposed) setDeviceStatus(status)
     })
+    const unsubscribeSync = deviceApi.onSyncStatus((status) => {
+      if (!disposed) setSyncStatus(status)
+    })
     return () => {
       disposed = true
       unsubscribe()
+      unsubscribeSync()
     }
   }, [])
 
@@ -419,6 +524,27 @@ function App() {
     setDeviceStatus(result.status)
   }
 
+  const handleUpload = async () => {
+    const frame = polarFrameRef.current
+    if (!connected) return
+    if (!frame) {
+      setSyncStatus({
+        state: 'error',
+        transferredBytes: 0,
+        totalBytes: 0,
+        progress: 0,
+        message: '尚未生成 360×80 极坐标帧',
+        timestamp: Date.now(),
+      })
+      return
+    }
+    const result = await deviceApi.syncFrame(frame)
+    if (!result.ok) {
+      setSyncStatus((current) => ({ ...current, state: 'error', message: result.message, timestamp: Date.now() }))
+    }
+  }
+
+  const syncBusy = syncStatus.state === 'preparing' || syncStatus.state === 'uploading' || syncStatus.state === 'committing'
   const selectedIndex = scenes.findIndex((scene) => scene.id === selectedScene.id)
 
   return (
@@ -454,7 +580,13 @@ function App() {
             <Button icon={<SaveOutlined />} />
           </Tooltip>
           <Button icon={<DownloadOutlined />}>导出</Button>
-          <Button type="primary" icon={<CloudUploadOutlined />} disabled={!connected}>
+          <Button
+            type="primary"
+            icon={<CloudUploadOutlined />}
+            disabled={!connected}
+            loading={syncBusy}
+            onClick={() => void handleUpload()}
+          >
             上传并运行
           </Button>
         </Space>
@@ -521,7 +653,7 @@ function App() {
             <div className="viewport-stage">
               <div className="square-stage">
                 <div className="viewport-canvas">
-                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} />
+                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} onPolarFrame={(frame) => { polarFrameRef.current = frame }} />
                   <div className="viewport-overlay top-left">
                     <div className="hud-label">CAMERA</div>
                     <div className="hud-value">{cameraAngle}° / 38 mm</div>
@@ -577,7 +709,7 @@ function App() {
           <Row gutter={[14, 14]} className="preview-row">
             <Col span={14}>
               <Card className="device-card" title={<span><VideoCameraOutlined /> 设备显示仿真</span>} extra={<Tag color="cyan">POV Preview</Tag>}>
-                <DevicePreview playing={playing} speed={speed} brightness={brightness} angle={cameraAngle} />
+                <DevicePreview playing={playing} speed={speed} brightness={brightness} angle={cameraAngle} frameRef={polarFrameRef} />
               </Card>
             </Col>
             <Col span={10}>
@@ -709,6 +841,19 @@ function App() {
                         {connected ? '断开连接' : deviceStatus.state === 'connecting' ? '连接中…' : '连接设备'}
                       </Button>
                     </Form>
+                    <div className="sync-status-panel">
+                      <div className="sync-status-head">
+                        <span>{syncStatus.message}</span>
+                        <b>{syncStatus.progress}%</b>
+                      </div>
+                      <Progress
+                        percent={syncStatus.progress}
+                        size="small"
+                        status={syncStatus.state === 'error' ? 'exception' : syncStatus.state === 'success' ? 'success' : 'active'}
+                        strokeColor={{ '0%': '#25d9ff', '100%': '#a45cff' }}
+                      />
+                      <div className="muted">{syncStatus.transferredBytes.toLocaleString()} / {syncStatus.totalBytes.toLocaleString()} B</div>
+                    </div>
                     <Divider />
                     <div className="link-row"><span>转速</span><b>1000 RPM</b></div>
                     <div className="link-row"><span>角度解析度</span><b>1.0°</b></div>
