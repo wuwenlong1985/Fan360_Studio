@@ -12,3 +12,4 @@ Thumbs.db
 coverage/
 prototype/ui/vite.config.js
 prototype/ui/vite.config.d.ts
+test-artifacts/

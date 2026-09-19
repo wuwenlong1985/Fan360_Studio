@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type SaveDialogOptions } from 'electron'
 import { once } from 'node:events'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Socket } from 'node:net'
 import {
@@ -11,6 +12,7 @@ import {
   crc32,
   decodeSyncAckPayload,
   encodeControlMessage,
+  encodeFanFile,
   encodeSyncBeginPayload,
   packFrameToPackets,
   type SyncAckInfo,
@@ -398,6 +400,24 @@ function registerIpc() {
     return deviceStatus
   })
   ipcMain.handle(DEVICE_CHANNELS.syncFrame, (_event, frame: Uint8Array) => syncFrameToDevice(frame))
+  ipcMain.handle(DEVICE_CHANNELS.exportFrame, async (_event, frame: Uint8Array) => {
+    if (frame.byteLength !== FRAME_BYTES) {
+      return { ok: false, message: `帧大小必须为 ${FRAME_BYTES} B` }
+    }
+    let filePath = process.env.FAN360_EXPORT_PATH
+    if (!filePath) {
+      const options: SaveDialogOptions = {
+        title: '导出 Fan360 帧',
+        defaultPath: 'fan360-frame.fan360',
+        filters: [{ name: 'Fan360 Frame', extensions: ['fan360'] }],
+      }
+      const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return { ok: false, message: '已取消导出' }
+      filePath = result.filePath
+    }
+    await writeFile(filePath, encodeFanFile([frame], { fps: 1000 / 60 }))
+    return { ok: true, path: filePath, message: 'Fan360 帧导出成功' }
+  })
 }
 
 app.whenReady().then(() => {

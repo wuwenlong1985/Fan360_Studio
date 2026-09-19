@@ -29,6 +29,12 @@ export type DeviceSyncStatus = {
   timestamp: number
 }
 
+export type ExportFrameResult = {
+  ok: boolean
+  path?: string
+  message: string
+}
+
 export type SyncFrameResult = {
   ok: boolean
   bytesSent: number
@@ -40,6 +46,7 @@ export type DeviceApi = {
   connect: (request: TcpConnectRequest) => Promise<TcpConnectResult>
   disconnect: () => Promise<DeviceStatus>
   syncFrame: (frame: Uint8Array) => Promise<SyncFrameResult>
+  exportFrame: (frame: Uint8Array) => Promise<ExportFrameResult>
   onStatus: (listener: (status: DeviceStatus) => void) => () => void
   onSyncStatus: (listener: (status: DeviceSyncStatus) => void) => () => void
 }
@@ -50,5 +57,6 @@ export const DEVICE_CHANNELS = {
   getStatus: 'device:tcp:get-status',
   status: 'device:tcp:status',
   syncFrame: 'device:sync:frame',
+  exportFrame: 'device:export:frame',
   syncStatus: 'device:sync:status',
 } as const

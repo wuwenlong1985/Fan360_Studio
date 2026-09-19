@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, Float, OrbitControls, Sparkles } from '@react-three/drei'
 import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget, type Group } from 'three'
-import { rgbaToFanFrame } from '@fan360/core'
 import { deviceApi } from './services/deviceClient'
 import type { DeviceStatus, DeviceSyncStatus } from '../../shared/device'
 import {
@@ -20,6 +19,7 @@ import {
   WifiOutlined,
 } from '@ant-design/icons'
 import {
+  App as AntdApp,
   Badge,
   Button,
   Card,
@@ -162,24 +162,45 @@ function PolarCapture({
     [],
   )
   const pixels = useMemo(() => new Uint8Array(size * size * 4), [])
+  const worker = useMemo(() => new Worker(new URL('./workers/polar.worker.ts', import.meta.url), { type: 'module' }), [])
+  const workerBusy = useRef(false)
+  const requestId = useRef(0)
   const lastCapture = useRef(0)
+  const onFrameRef = useRef(onFrame)
+  onFrameRef.current = onFrame
 
-  useEffect(() => () => target.dispose(), [target])
+  useEffect(() => {
+    worker.onmessage = (event: MessageEvent<{ id: number; frame?: ArrayBuffer; error?: string }>) => {
+      workerBusy.current = false
+      if (event.data.frame) onFrameRef.current(new Uint8Array(event.data.frame))
+      if (event.data.error) console.error('[polar-worker]', event.data.error)
+    }
+    return () => {
+      worker.terminate()
+      target.dispose()
+    }
+  }, [target, worker])
 
   useFrame((state) => {
     const interval = playing ? 0.25 : 1
-    if (state.clock.elapsedTime - lastCapture.current < interval) return
+    if (workerBusy.current || state.clock.elapsedTime - lastCapture.current < interval) return
     lastCapture.current = state.clock.elapsedTime
     const previousTarget = gl.getRenderTarget()
     gl.setRenderTarget(target)
     gl.render(scene, camera)
     gl.readRenderTargetPixels(target, 0, 0, size, size, pixels)
     gl.setRenderTarget(previousTarget)
-    onFrame(
-      rgbaToFanFrame(
-        { data: pixels, width: size, height: size, flipY: true },
-        { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear' },
-      ),
+    const transferable = pixels.slice().buffer
+    workerBusy.current = true
+    worker.postMessage(
+      {
+        id: ++requestId.current,
+        pixels: transferable,
+        width: size,
+        height: size,
+        options: { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear' },
+      },
+      [transferable],
     )
   }, 1)
 
@@ -451,6 +472,7 @@ function sceneIcon(scene: SceneItem) {
 }
 
 function App() {
+  const { message } = AntdApp.useApp()
   const [selectedScene, setSelectedScene] = useState(scenes[0])
   const [playing, setPlaying] = useState(true)
   const [speed, setSpeed] = useState(1)
@@ -524,6 +546,17 @@ function App() {
     setDeviceStatus(result.status)
   }
 
+  const handleExport = async () => {
+    const frame = polarFrameRef.current
+    if (!frame) {
+      message.warning('尚未生成 360×80 极坐标帧')
+      return
+    }
+    const result = await deviceApi.exportFrame(frame)
+    if (result.ok) message.success(result.message)
+    else message.info(result.message)
+  }
+
   const handleUpload = async () => {
     const frame = polarFrameRef.current
     if (!connected) return
@@ -579,7 +612,7 @@ function App() {
           <Tooltip title="保存项目">
             <Button icon={<SaveOutlined />} />
           </Tooltip>
-          <Button icon={<DownloadOutlined />}>导出</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => void handleExport()}>导出</Button>
           <Button
             type="primary"
             icon={<CloudUploadOutlined />}

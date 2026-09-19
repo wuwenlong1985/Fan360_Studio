@@ -20,6 +20,7 @@ const fallbackApi: DeviceApi = {
     }
     return { ok: true, status }
   },
+  exportFrame: async (frame) => ({ ok: false, message: `浏览器预览模式无法写入本地文件（${frame.byteLength} B）` }),
   syncFrame: async (frame) => {
     await wait(250)
     return { ok: true, bytesSent: frame.byteLength, message: '浏览器预览模式：已模拟同步' }
