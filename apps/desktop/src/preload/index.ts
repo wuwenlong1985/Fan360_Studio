@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { DEVICE_CHANNELS, type DeviceApi, type DeviceStatus, type DeviceSyncStatus, type TcpConnectRequest } from '../shared/device'
+import { PROJECT_CHANNELS, type ProjectApi } from '../shared/project'
 
 const deviceApi: DeviceApi = {
   getStatus: () => ipcRenderer.invoke(DEVICE_CHANNELS.getStatus),
@@ -20,6 +21,12 @@ const deviceApi: DeviceApi = {
   },
 }
 
+const projectApi: ProjectApi = {
+  save: (document) => ipcRenderer.invoke(PROJECT_CHANNELS.save, document),
+  load: () => ipcRenderer.invoke(PROJECT_CHANNELS.load),
+}
+
 contextBridge.exposeInMainWorld('fan360', {
   device: deviceApi,
+  project: projectApi,
 })

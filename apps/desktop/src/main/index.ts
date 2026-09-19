@@ -25,6 +25,7 @@ import {
   type TcpConnectRequest,
   type TcpConnectResult,
 } from '../shared/device'
+import { PROJECT_CHANNELS, type ProjectDocument } from '../shared/project'
 
 let mainWindow: BrowserWindow | null = null
 let deviceSocket: Socket | null = null
@@ -410,6 +411,41 @@ function registerIpc() {
     return deviceStatus
   })
   ipcMain.handle(DEVICE_CHANNELS.syncFrames, (_event, frames: Uint8Array[], fps: number) => syncFramesToDevice(frames, fps))
+  ipcMain.handle(PROJECT_CHANNELS.save, async (_event, document: ProjectDocument) => {
+    let filePath = process.env.FAN360_PROJECT_SAVE_PATH
+    if (!filePath) {
+      const options: SaveDialogOptions = {
+        title: '保存 Fan360 项目',
+        defaultPath: 'fan360-project.fanproj',
+        filters: [{ name: 'Fan360 Project', extensions: ['fanproj', 'json'] }],
+      }
+      const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return { ok: false, message: '已取消保存' }
+      filePath = result.filePath
+    }
+    await writeFile(filePath, JSON.stringify({ ...document, version: 1, savedAt: new Date().toISOString() }, null, 2), 'utf8')
+    return { ok: true, path: filePath, message: '项目保存成功' }
+  })
+
+  ipcMain.handle(PROJECT_CHANNELS.load, async () => {
+    let filePath = process.env.FAN360_PROJECT_LOAD_PATH
+    if (!filePath) {
+      const options: OpenDialogOptions = {
+        title: '打开 Fan360 项目',
+        filters: [{ name: 'Fan360 Project', extensions: ['fanproj', 'json'] }],
+        properties: ['openFile'],
+      }
+      const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+      if (result.canceled || !result.filePaths[0]) return { ok: false, message: '已取消打开' }
+      filePath = result.filePaths[0]
+    }
+    const document = JSON.parse(await readFile(filePath, 'utf8')) as ProjectDocument
+    if (document.version !== 1 || typeof document.selectedSceneId !== 'string') {
+      return { ok: false, message: '不支持的项目文件格式' }
+    }
+    return { ok: true, path: filePath, document, message: '项目打开成功' }
+  })
+
   ipcMain.handle(DEVICE_CHANNELS.importModel, async () => {
     let filePath = process.env.FAN360_IMPORT_MODEL_PATH
     if (!filePath) {

@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Float, OrbitControls } from '@react-three/drei'
+import { ContactShadows, Environment, Float, OrbitControls } from '@react-three/drei'
 import { ProceduralScene } from './scenes/ProceduralScene'
 import { sceneCatalog as scenes, type SceneItem } from './scenes/sceneCatalog'
 import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget } from 'three'
 import { deviceApi } from './services/deviceClient'
+import { projectApi, type ProjectDocument } from './services/projectClient'
 import type { DeviceStatus, DeviceSyncStatus } from '../../shared/device'
 import {
   CloudUploadOutlined,
   DownloadOutlined,
   ExperimentOutlined,
+  FolderOpenOutlined,
   FullscreenOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
@@ -115,12 +117,32 @@ function PolarCapture({
   return null
 }
 
+function StudioEnvironment() {
+  const [files, setFiles] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    void import('@pmndrs/assets/hdri/studio.exr').then((module) => {
+      if (active) setFiles(module.default)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+  if (!files) return null
+  return (
+    <Suspense fallback={null}>
+      <Environment files={files} background={false} />
+    </Suspense>
+  )
+}
+
 function EditorScene({ scene, playing, speed, cameraAngle, brightness, onPolarFrame, modelUrl }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; onPolarFrame: (frame: Uint8Array) => void; modelUrl?: string }) {
   return (
     <Canvas shadows="basic" dpr={[1, 2]} camera={{ position: [0.4, 0.2, 4.6], fov: 38 }}>
       <color attach="background" args={['#05090f']} />
       <fog attach="fog" args={['#05090f', 5.5, 10]} />
-      <ambientLight intensity={0.65} />
+      <StudioEnvironment />
+      <ambientLight intensity={0.5} />
       <directionalLight position={[4, 6, 4]} intensity={2.5} castShadow shadow-mapSize={[1024, 1024]} />
       <pointLight position={[-4, 0, -2]} color="#207cff" intensity={4} />
       <Float speed={playing ? 1.2 * speed : 0} rotationIntensity={0.16} floatIntensity={0.28}>
@@ -457,6 +479,48 @@ function App() {
     if (importedUrlRef.current) URL.revokeObjectURL(importedUrlRef.current)
   }, [])
 
+  const handleSaveProject = async () => {
+    const document: ProjectDocument = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      selectedSceneId: selectedScene.id,
+      playing,
+      speed,
+      brightness,
+      cameraAngle,
+      timeline,
+      viewMode,
+      quality,
+      deviceIp,
+      layout: { left: showLeft, right: showRight, bottom: showBottom, circle: showCircleMask },
+    }
+    const result = await projectApi.save(document)
+    result.ok ? message.success(result.message) : message.info(result.message)
+  }
+
+  const handleLoadProject = async () => {
+    const result = await projectApi.load()
+    if (!result.ok || !result.document) {
+      message.info(result.message)
+      return
+    }
+    const document = result.document
+    setSelectedScene(scenes.find((scene) => scene.id === document.selectedSceneId) ?? scenes[0])
+    setPlaying(document.playing)
+    setSpeed(document.speed)
+    setBrightness(document.brightness)
+    setCameraAngle(document.cameraAngle)
+    setTimeline(document.timeline)
+    setViewMode(document.viewMode)
+    setQuality(document.quality)
+    setDeviceIp(document.deviceIp)
+    setShowLeft(document.layout.left)
+    setShowRight(document.layout.right)
+    setShowBottom(document.layout.bottom)
+    setShowCircleMask(document.layout.circle)
+    message.success(result.message)
+  }
+
   const handleImportModel = async () => {
     const result = await deviceApi.importModel()
     if (!result.ok || !result.data) {
@@ -568,7 +632,10 @@ function App() {
         <Space size={10}>
           <Badge status={deviceBadgeStatus} text={<span className="status-text">{connected ? "TCP 设备已连接" : deviceStatus.state === "connecting" ? "TCP 连接中" : "TCP 设备待连接"}</span>} />
           <Tooltip title="保存项目">
-            <Button icon={<SaveOutlined />} />
+            <Button aria-label="保存项目" icon={<SaveOutlined />} onClick={() => void handleSaveProject()} />
+          </Tooltip>
+          <Tooltip title="打开项目">
+            <Button aria-label="打开项目" icon={<FolderOpenOutlined />} onClick={() => void handleLoadProject()} />
           </Tooltip>
           <Button
             danger={recording}
