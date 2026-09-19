@@ -650,3 +650,86 @@ select {
     min-width: 220px;
   }
 }
+
+/* Reference project alignment */
+.topbar {
+  background: #ffffff !important;
+  color: #1d3658;
+  border-bottom: 1px solid #e8edf4 !important;
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+}
+
+.brand-name {
+  font-size: 21px;
+  line-height: 1.1;
+}
+
+.brand-subtitle {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: none;
+}
+
+.scene-select {
+  width: 210px;
+  flex: 0 0 210px;
+}
+
+.scene-select .ant-select-selector {
+  border-color: #dbe4ef !important;
+  background: #f8fafc !important;
+}
+
+.topbar-center .ant-tag {
+  margin-inline-end: 0;
+}
+
+.inspector-collapse {
+  background: transparent !important;
+}
+
+.inspector-collapse .ant-collapse-item {
+  border-bottom: 1px solid #edf1f6 !important;
+}
+
+.inspector-collapse .ant-collapse-header {
+  padding: 11px 4px !important;
+  color: #344963 !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.inspector-collapse .ant-collapse-content-box {
+  padding: 4px 2px 12px !important;
+}
+
+.scene-setting-panel {
+  padding: 0 2px;
+}
+
+.scene-setting-panel .ant-btn {
+  font-size: 12px;
+}
+
+@media (max-width: 1460px) {
+  .scene-select {
+    width: 180px;
+    flex-basis: 180px;
+  }
+
+  .topbar-center .ant-tag {
+    display: none;
+  }
+}
+
+@media (max-width: 1360px) {
+  .scene-select {
+    width: 158px;
+    flex-basis: 158px;
+  }
+}

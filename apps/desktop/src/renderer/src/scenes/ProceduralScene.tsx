@@ -33,9 +33,9 @@ function useFallbackModel(): string | null {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     let active = true
-    void import('@pmndrs/assets/models/bunny.glb.js').then((module) => {
-      if (active) setUrl(module.default)
-    })
+    void import('@pmndrs/assets/models/bunny.glb.js')
+      .then((module) => { if (active) setUrl(module.default) })
+      .catch((error) => console.error('[fallback-model] failed to load', error))
     return () => {
       active = false
     }

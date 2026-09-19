@@ -1,7 +1,8 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, Float, OrbitControls } from '@react-three/drei'
 import { ProceduralScene } from './scenes/ProceduralScene'
+import { applyBloom, rgbaToFanFrame } from '@fan360/core'
 import { sceneCatalog as scenes, type SceneItem } from './scenes/sceneCatalog'
 import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget } from 'three'
 import { deviceApi } from './services/deviceClient'
@@ -40,7 +41,7 @@ import {
   Space,
   Statistic,
   Switch,
-  Tabs,
+  Collapse,
   Tag,
   Tooltip,
   Typography,
@@ -78,7 +79,8 @@ function PolarCapture({
     [],
   )
   const pixels = useMemo(() => new Uint8Array(size * size * 4), [])
-  const worker = useMemo(() => new Worker(new URL('./workers/polar.worker.ts', import.meta.url), { type: 'module' }), [])
+  const workerRef = useRef<Worker | null>(null)
+  const workerFailed = useRef(false)
   const workerBusy = useRef(false)
   const requestId = useRef(0)
   const lastCapture = useRef(0)
@@ -88,17 +90,33 @@ function PolarCapture({
   onStatsRef.current = onStats
 
   useEffect(() => {
-    worker.onmessage = (event: MessageEvent<{ id: number; frame?: ArrayBuffer; processingMs?: number; error?: string }>) => {
-      workerBusy.current = false
-      if (event.data.frame) onFrameRef.current(new Uint8Array(event.data.frame))
-      if (typeof event.data.processingMs === 'number') onStatsRef.current(event.data.processingMs)
-      if (event.data.error) console.error('[polar-worker]', event.data.error)
+    let worker: Worker | null = null
+    try {
+      worker = new Worker(new URL('./workers/polar.worker.ts', import.meta.url), { type: 'module' })
+      workerRef.current = worker
+      worker.onmessage = (event: MessageEvent<{ id: number; frame?: ArrayBuffer; processingMs?: number; error?: string }>) => {
+        workerBusy.current = false
+        if (event.data.frame) onFrameRef.current(new Uint8Array(event.data.frame))
+        if (typeof event.data.processingMs === 'number') onStatsRef.current(event.data.processingMs)
+        if (event.data.error) console.error('[polar-worker]', event.data.error)
+      }
+      worker.onerror = (event) => {
+        console.error('[polar-worker] worker failed, using synchronous fallback', event.message)
+        workerFailed.current = true
+        workerBusy.current = false
+        worker?.terminate()
+        workerRef.current = null
+      }
+    } catch (error) {
+      workerFailed.current = true
+      console.error('[polar-worker] unable to create worker, using synchronous fallback', error)
     }
     return () => {
-      worker.terminate()
+      worker?.terminate()
+      workerRef.current = null
       target.dispose()
     }
-  }, [target, worker])
+  }, [target])
 
   useFrame((state) => {
     const interval = playing ? 0.25 : 1
@@ -109,9 +127,14 @@ function PolarCapture({
     gl.render(scene, camera)
     gl.readRenderTargetPixels(target, 0, 0, size, size, pixels)
     gl.setRenderTarget(previousTarget)
+    if (workerFailed.current || !workerRef.current) {
+      const processed = bloomEnabled ? applyBloom(pixels, size, size, { threshold: 0.62, strength: bloomStrength, radius: 6, downsample: 4 }) : pixels
+      onFrameRef.current(rgbaToFanFrame({ data: processed, width: size, height: size, flipY: true }, { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear' }))
+      return
+    }
     const transferable = pixels.slice().buffer
     workerBusy.current = true
-    worker.postMessage(
+    workerRef.current.postMessage(
       {
         id: ++requestId.current,
         pixels: transferable,
@@ -130,9 +153,9 @@ function StudioEnvironment() {
   const [files, setFiles] = useState<string | null>(null)
   useEffect(() => {
     let active = true
-    void import('@pmndrs/assets/hdri/studio.exr').then((module) => {
-      if (active) setFiles(module.default)
-    })
+    void import('@pmndrs/assets/hdri/studio.exr')
+      .then((module) => { if (active) setFiles(module.default) })
+      .catch((error) => console.error('[environment] failed to load HDR', error))
     return () => {
       active = false
     }
@@ -143,6 +166,36 @@ function StudioEnvironment() {
       <Environment files={files} background={false} />
     </Suspense>
   )
+}
+
+class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[scene-error]', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <group>
+          <mesh>
+            <icosahedronGeometry args={[0.9, 1]} />
+            <meshStandardMaterial color="#2475ed" wireframe emissive="#7fb1f5" emissiveIntensity={0.6} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[1.35, 0.025, 10, 100]} />
+            <meshBasicMaterial color="#7fb1f5" />
+          </mesh>
+        </group>
+      )
+    }
+    return this.props.children
+  }
 }
 
 function EditorScene({ scene, playing, speed, cameraAngle, brightness, bloomEnabled, bloomStrength, onPolarFrame, onPolarStats, modelAsset }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; bloomEnabled: boolean; bloomStrength: number; onPolarFrame: (frame: Uint8Array) => void; onPolarStats: (processingMs: number) => void; modelAsset?: ImportModelResult | null }) {
@@ -156,14 +209,16 @@ function EditorScene({ scene, playing, speed, cameraAngle, brightness, bloomEnab
       <pointLight position={[-4, 0, -2]} color="#207cff" intensity={4} />
       <Float speed={playing ? 1.2 * speed : 0} rotationIntensity={0.16} floatIntensity={0.28}>
         <group rotation={[0.08, (cameraAngle * Math.PI) / 180, 0]}>
-          <ProceduralScene
-            sceneId={scene.id}
-            modelAsset={modelAsset}
-            accent={scene.accent}
-            second={scene.second}
-            playing={playing}
-            speed={speed}
-          />
+          <SceneErrorBoundary key={scene.id}>
+            <ProceduralScene
+              sceneId={scene.id}
+              modelAsset={modelAsset}
+              accent={scene.accent}
+              second={scene.second}
+              playing={playing}
+              speed={speed}
+            />
+          </SceneErrorBoundary>
         </group>
       </Float>
       <PolarCapture playing={playing} brightness={brightness} bloomEnabled={bloomEnabled} bloomStrength={bloomStrength} onFrame={onPolarFrame} onStats={onPolarStats} />
@@ -432,7 +487,6 @@ function App() {
     timestamp: Date.now(),
   })
   const [deviceIp, setDeviceIp] = useState('192.168.1.100')
-  const [showLeft, setShowLeft] = useState(true)
   const [showRight, setShowRight] = useState(true)
   const [showBottom, setShowBottom] = useState(false)
   const [showCircleMask, setShowCircleMask] = useState(true)
@@ -499,7 +553,7 @@ function App() {
       viewMode,
       quality,
       deviceIp,
-      layout: { left: showLeft, right: showRight, bottom: showBottom, circle: showCircleMask },
+      layout: { left: false, right: showRight, bottom: showBottom, circle: showCircleMask },
     }
     const result = await projectApi.save(document)
     result.ok ? message.success(result.message) : message.info(result.message)
@@ -521,7 +575,6 @@ function App() {
     setViewMode(document.viewMode)
     setQuality(document.quality)
     setDeviceIp(document.deviceIp)
-    setShowLeft(document.layout.left)
     setShowRight(document.layout.right)
     setShowBottom(document.layout.bottom)
     setShowCircleMask(document.layout.circle)
@@ -601,7 +654,6 @@ function App() {
   }
 
   const syncBusy = syncStatus.state === 'preparing' || syncStatus.state === 'uploading' || syncStatus.state === 'committing'
-  const selectedIndex = scenes.findIndex((scene) => scene.id === selectedScene.id)
 
   return (
     <Layout className="app-shell">
@@ -616,6 +668,20 @@ function App() {
           </div>
         </div>
         <div className="topbar-center">
+          <Select
+            className="scene-select"
+            value={selectedScene.id}
+            onChange={(value) => {
+              const scene = scenes.find((item) => item.id === value)
+              if (scene) setSelectedScene(scene)
+            }}
+            options={scenes.map((scene) => ({ value: scene.id, label: `${scene.emoji}  ${scene.name}` }))}
+            showSearch
+            optionFilterProp="label"
+            virtual={false}
+            listHeight={420}
+            aria-label="选择 3D 场景"
+          />
           <Segmented
             value={viewMode}
             onChange={(value) => setViewMode(String(value))}
@@ -626,7 +692,6 @@ function App() {
           {(recording || recordedCount > 0) && <Tag color={recording ? "red" : "green"}>REC {recordedCount}F</Tag>}
           {importedModel?.mainFile && <Tag color="purple">{importedModel.mainFile}</Tag>}
           <div className="panel-toggles">
-            <Button size="small" type={showLeft ? 'primary' : 'default'} onClick={() => setShowLeft((value) => !value)}>左栏</Button>
             <Button size="small" type={showRight ? 'primary' : 'default'} onClick={() => setShowRight((value) => !value)}>右栏</Button>
             <Button size="small" type={showBottom ? 'primary' : 'default'} onClick={() => setShowBottom((value) => !value)}>下方</Button>
             <Button size="small" type={showCircleMask ? 'primary' : 'default'} onClick={() => setShowCircleMask((value) => !value)}>圆框</Button>
@@ -661,42 +726,6 @@ function App() {
       </Header>
 
       <Layout className="workspace">
-        {showLeft && (
-        <Sider width={258} className="scene-sider">
-          <div className="sider-heading">
-            <div>
-              <div className="eyebrow">CONTENT LIBRARY</div>
-              <Title level={4}>3D 场景库</Title>
-            </div>
-            <Button type="text" icon={<ReloadOutlined />} />
-          </div>
-          <div className="library-meta">
-            <Text type="secondary">{scenes.length} 个内置场景</Text>
-            <Tag color="blue">20 / 20</Tag>
-          </div>
-          <div className="scene-list">
-            {scenes.map((scene, index) => (
-              <button
-                className={`scene-item ${scene.id === selectedScene.id ? 'is-selected' : ''}`}
-                key={scene.id}
-                onClick={() => setSelectedScene(scene)}
-              >
-                {sceneIcon(scene)}
-                <span className="scene-info">
-                  <span className="scene-name">{scene.name}</span>
-                  <span className="scene-category">{scene.category}</span>
-                </span>
-                {index === selectedIndex && <span className="selected-dot" />}
-              </button>
-            ))}
-          </div>
-          <Divider />
-          <Button block icon={<ExperimentOutlined />} onClick={() => void handleImportModel()}>
-            导入 GLB / 视频 / LOGO
-          </Button>
-        </Sider>
-        )}
-
         <Content className={`main-content ${showBottom ? 'has-bottom' : ''}`}>
           <div className="viewport-card">
             <div className="viewport-head">
@@ -809,9 +838,25 @@ function App() {
             </div>
             <Button type="text" icon={<SettingOutlined />} />
           </div>
-          <Tabs
-            defaultActiveKey="camera"
+          <Collapse
+            className="inspector-collapse"
+            defaultActiveKey={['scene', 'camera', 'device']}
             items={[
+              {
+                key: 'scene',
+                label: '场景与模型',
+                children: (
+                  <div className="scene-setting-panel">
+                    <div className="link-row"><span>当前场景</span><b>{selectedScene.name}</b></div>
+                    <div className="link-row"><span>场景分类</span><b>{selectedScene.category}</b></div>
+                    <div className="link-row"><span>内置场景</span><b>{scenes.length} 个</b></div>
+                    {importedModel?.mainFile && <div className="link-row"><span>导入模型</span><b>{importedModel.mainFile}</b></div>}
+                    <Button block icon={<ExperimentOutlined />} onClick={() => void handleImportModel()} style={{ marginTop: 10 }}>
+                      导入 GLB / glTF 模型
+                    </Button>
+                  </div>
+                ),
+              },
               {
                 key: 'camera',
                 label: '镜头',
