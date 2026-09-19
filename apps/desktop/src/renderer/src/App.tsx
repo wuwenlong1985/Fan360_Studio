@@ -47,7 +47,7 @@ import {
   Typography,
 } from 'antd'
 
-const { Header, Sider, Content } = Layout
+const { Sider, Content } = Layout
 const { Text, Title } = Typography
 
 function PolarCapture({
@@ -200,12 +200,18 @@ class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 
 function EditorScene({ scene, playing, speed, cameraAngle, brightness, bloomEnabled, bloomStrength, onPolarFrame, onPolarStats, modelAsset }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; bloomEnabled: boolean; bloomStrength: number; onPolarFrame: (frame: Uint8Array) => void; onPolarStats: (processingMs: number) => void; modelAsset?: ImportModelResult | null }) {
   return (
-    <Canvas shadows="basic" dpr={[1, 2]} camera={{ position: [0.4, 0.2, 4.6], fov: 38 }}>
-      <color attach="background" args={['#05090f']} />
-      <fog attach="fog" args={['#05090f', 5.5, 10]} />
+    <Canvas
+      shadows="basic"
+      dpr={[1, 1.5]}
+      camera={{ position: [0, 0.25, 4.15], fov: 38 }}
+      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
+      onCreated={({ gl }) => { gl.domElement.dataset.webglReady = 'true' }}
+    >
+      <color attach="background" args={['#0b1524']} />
+      <fog attach="fog" args={['#0b1524', 5.8, 10.5]} />
       <StudioEnvironment />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[4, 6, 4]} intensity={2.5} castShadow shadow-mapSize={[1024, 1024]} />
+      <ambientLight intensity={0.95} />
+      <directionalLight position={[4, 6, 4]} intensity={3.1} castShadow shadow-mapSize={[1024, 1024]} />
       <pointLight position={[-4, 0, -2]} color="#207cff" intensity={4} />
       <Float speed={playing ? 1.2 * speed : 0} rotationIntensity={0.16} floatIntensity={0.28}>
         <group rotation={[0.08, (cameraAngle * Math.PI) / 180, 0]}>
@@ -657,14 +663,14 @@ function App() {
 
   return (
     <Layout className="app-shell">
-      <Header className="topbar">
+      <header className="app-header">
         <div className="brand">
           <div className="brand-mark">
             <ThunderboltOutlined />
           </div>
-          <div>
-            <div className="brand-name">FAN360 STUDIO</div>
-            <div className="brand-subtitle">裸眼 3D 旋转风扇工作台</div>
+          <div className="brand-copy">
+            <h1>FAN360 <span>裸眼3D风扇工作台</span></h1>
+            <p>REALTIME VOLUMETRIC DISPLAY <span>•</span> 360° × 80 LED</p>
           </div>
         </div>
         <div className="topbar-center">
@@ -723,7 +729,7 @@ function App() {
             上传并运行
           </Button>
         </Space>
-      </Header>
+      </header>
 
       <Layout className="workspace">
         <Content className={`main-content ${showBottom ? 'has-bottom' : ''}`}>
