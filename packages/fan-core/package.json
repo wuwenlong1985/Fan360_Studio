@@ -1,0 +1,17 @@
+{
+  "name": "@fan360/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "call \"%npm_node_execpath%\" ../../node_modules/vitest/vitest.mjs run"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "@fan360/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fan360 Studio desktop application",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "call \"%npm_node_execpath%\" ../../node_modules/electron-vite/bin/electron-vite.js dev",
+    "build": "call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.node.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.web.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/electron-vite/bin/electron-vite.js build",
+    "typecheck": "call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.node.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.web.json --noEmit",
+    "package": "call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.node.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/typescript/bin/tsc -p tsconfig.web.json --noEmit && call \"%npm_node_execpath%\" ../../node_modules/electron-vite/bin/electron-vite.js build && call \"%npm_node_execpath%\" ../../node_modules/electron-builder/cli.js --win"
+  },
+  "dependencies": {
+    "@fan360/core": "*",
+    "@ant-design/icons": "^6.1.0",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "antd": "^6.6.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.14.0",
+    "@types/node": "26.6.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  },
+  "build": {
+    "appId": "com.fan360.studio",
+    "productName": "Fan360 Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Fan360-Studio-${version}-Setup.${ext}"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+*.log
+*.tsbuildinfo
+.npmrc
+.DS_Store
+Thumbs.db
+.vite/
+coverage/
+prototype/ui/vite.config.js
+prototype/ui/vite.config.d.ts

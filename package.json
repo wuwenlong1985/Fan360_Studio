@@ -1,0 +1,16 @@
+{
+  "name": "fan360-studio",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @fan360/desktop",
+    "build": "npm run build --workspace @fan360/desktop",
+    "typecheck": "npm run typecheck --workspace @fan360/core && npm run typecheck --workspace @fan360/desktop",
+    "test": "call \"%npm_node_execpath%\" node_modules/vitest/vitest.mjs run",
+    "package": "npm run package --workspace @fan360/desktop"
+  }
+}
