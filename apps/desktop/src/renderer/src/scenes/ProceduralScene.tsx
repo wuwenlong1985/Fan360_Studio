@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import type { SceneId } from './sceneCatalog'
 import { Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import {
@@ -431,28 +432,30 @@ function Custom({ accent, second, playing, speed }: SceneProps) {
   )
 }
 
-export function ProceduralScene(props: SceneProps & { sceneId: string }) {
-  switch (props.sceneId) {
-    case 'strawberry': return <Strawberry {...props} />
-    case 'santa': return <Santa {...props} />
-    case 'portrait': return <Portrait {...props} />
-    case 'countdown': return <Countdown {...props} />
-    case 'earth': return <Earth {...props} />
-    case 'gift': return <Gift {...props} />
-    case 'rose': return <Rose {...props} />
-    case 'fireworks': return <Fireworks {...props} />
-    case 'butterfly': return <Butterfly {...props} />
-    case 'astronaut': return <Astronaut {...props} />
-    case 'energy': return <EnergyOrb {...props} />
-    case 'flame': return <Flame {...props} />
-    case 'diamond': return <Diamond {...props} />
-    case 'clock': return <Clock {...props} />
-    case 'spectrum': return <Spectrum {...props} />
-    case 'logo': return <Logo {...props} />
-    case 'text3d': return <Text3D {...props} />
-    case 'car': return <Car {...props} />
-    case 'particles': return <ParticleHead {...props} />
-    case 'custom': return <Custom {...props} />
-    default: return <EnergyOrb {...props} />
-  }
+const SCENE_COMPONENTS: Record<SceneId, ComponentType<SceneProps>> = {
+  strawberry: Strawberry,
+  santa: Santa,
+  portrait: Portrait,
+  countdown: Countdown,
+  earth: Earth,
+  gift: Gift,
+  rose: Rose,
+  fireworks: Fireworks,
+  butterfly: Butterfly,
+  astronaut: Astronaut,
+  energy: EnergyOrb,
+  flame: Flame,
+  diamond: Diamond,
+  clock: Clock,
+  spectrum: Spectrum,
+  logo: Logo,
+  text3d: Text3D,
+  car: Car,
+  particles: ParticleHead,
+  custom: Custom,
+}
+
+export function ProceduralScene(props: SceneProps & { sceneId: SceneId }) {
+  const SceneComponent = SCENE_COMPONENTS[props.sceneId]
+  return <SceneComponent {...props} />
 }
