@@ -8,6 +8,7 @@ import {
   CONTROL_MESSAGE_TYPE,
   ControlMessageDecoder,
   concatPacketPackets,
+  crc32Frames,
   createFanFrame,
   crc32,
   decodeControlMessage,
@@ -19,6 +20,7 @@ import {
   getLedPixel,
   packSectorPacket,
   packFrameToPackets,
+  packFramesToPackets,
   parseSectorPacket,
   rgbaToFanFrame,
   setLedPixel,
@@ -103,15 +105,19 @@ describe('TCP control protocol', () => {
       frameCount: 2,
       frameBytes: FRAME_BYTES,
       sectorPacketBytes: SECTOR_PACKET_BYTES,
+      holdRevolutions: 2,
       payloadCrc32: 123456,
       totalPacketBytes: SECTOR_PACKET_BYTES * 360 * 2,
+      fpsMilli: 8333,
     })
     expect(decodeSyncBeginPayload(payload)).toEqual({
       frameCount: 2,
       frameBytes: FRAME_BYTES,
       sectorPacketBytes: SECTOR_PACKET_BYTES,
+      holdRevolutions: 2,
       payloadCrc32: 123456,
       totalPacketBytes: SECTOR_PACKET_BYTES * 360 * 2,
+      fpsMilli: 8333,
     })
   })
 
@@ -136,6 +142,19 @@ describe('TCP control protocol', () => {
     const message = encodeControlMessage(CONTROL_MESSAGE_TYPE.SYNC_COMMIT, 9)
     message[10] ^= 0xff
     expect(() => decodeControlMessage(message)).toThrow('CRC mismatch')
+  })
+
+  it('packs two animated frames into 720 sector packets', () => {
+    const first = createFanFrame()
+    const second = createFanFrame()
+    setLedPixel(second, 200, 40, { brightness: 88, r: 1, g: 2, b: 3 })
+    const packets = packFramesToPackets([first, second], 100)
+    expect(packets).toHaveLength(720)
+    expect(parseSectorPacket(packets[0]).angleIndex).toBe(0)
+    expect(parseSectorPacket(packets[359]).angleIndex).toBe(359)
+    expect(parseSectorPacket(packets[360]).angleIndex).toBe(0)
+    expect(concatPacketPackets(packets).byteLength).toBe(720 * SECTOR_PACKET_BYTES)
+    expect(crc32Frames([first, second])).toBe(crc32(new Uint8Array([...first, ...second])))
   })
 
   it('packs one full frame into 360 sector packets', () => {

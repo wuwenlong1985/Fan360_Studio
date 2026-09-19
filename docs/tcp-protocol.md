@@ -1,4 +1,4 @@
-# Fan360 TCP 设备协议 v1
+# Fan360 TCP 设备协议 v2
 
 ## 1. 连接参数
 
@@ -20,7 +20,7 @@
 | 偏移 | 长度 | 字段 | 说明 |
 |---:|---:|---|---|
 | 0 | 4 | Magic | `0x30363346`，对应字节 `46 33 36 30` |
-| 4 | 2 | Version | 当前为 `1` |
+| 4 | 2 | Version | 当前为 `2` |
 | 6 | 2 | Type | 消息类型 |
 | 8 | 4 | Sequence | 同步序号 |
 | 12 | 4 | PayloadLength | payload 字节数 |
@@ -47,21 +47,22 @@
 
 ## 4. SYNC_BEGIN Payload
 
-固定 20 B：
+固定 24 B：
 
 | 偏移 | 长度 | 字段 | 说明 |
 |---:|---:|---|---|
-| 0 | 2 | frameCount | 本次同步帧数，当前为 1 |
+| 0 | 2 | frameCount | 本次同步帧数，1 到 255 |
 | 2 | 2 | reserved | 必须为 0 |
 | 4 | 4 | frameBytes | 单帧原始字节数，115200 |
 | 8 | 2 | sectorPacketBytes | 单角度片传输包大小，336 |
-| 10 | 2 | reserved | 必须为 0 |
-| 12 | 4 | payloadCrc32 | 原始帧数据 CRC32 |
-| 16 | 4 | totalPacketBytes | 数据包流总字节数 |
+| 10 | 2 | holdRevolutions | 每帧保持显示的旋转圈数，最小 1 |
+| 12 | 4 | payloadCrc32 | 多帧原始数据连续拼接后的 CRC32 |
+| 16 | 4 | totalPacketBytes | 数据包流总字节数 = frameCount × 120960 |
+| 20 | 4 | fpsMilli | 源动画帧率 × 1000 |
 
 ## 5. 角度片数据包
 
-`SYNC_BEGIN` 后，App 连续发送 360 个固定 336 B 数据包，按角度 0 到 359 排列。
+`SYNC_BEGIN` 后，App 按帧连续发送数据。每帧包含 360 个固定 336 B 数据包，按角度 0 到 359 排列；多帧之间直接连续排列。
 
 | 偏移 | 长度 | 字段 | 说明 |
 |---:|---:|---|---|

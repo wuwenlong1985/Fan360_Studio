@@ -436,6 +436,9 @@ function App() {
   const [showBottom, setShowBottom] = useState(false)
   const [showCircleMask, setShowCircleMask] = useState(true)
   const polarFrameRef = useRef<Uint8Array | null>(null)
+  const recordedFramesRef = useRef<Uint8Array[]>([])
+  const [recording, setRecording] = useState(false)
+  const [recordedCount, setRecordedCount] = useState(0)
   const [syncStatus, setSyncStatus] = useState<DeviceSyncStatus>({
     state: 'idle',
     transferredBytes: 0,
@@ -472,6 +475,22 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!recording) return
+    const timer = window.setTimeout(() => setRecording(false), 8000)
+    return () => window.clearTimeout(timer)
+  }, [recording])
+
+  const handleRecordingToggle = () => {
+    if (recording) {
+      setRecording(false)
+      return
+    }
+    recordedFramesRef.current = []
+    setRecordedCount(0)
+    setRecording(true)
+  }
+
   const handleDeviceConnection = async () => {
     if (connected) {
       setDeviceStatus(await deviceApi.disconnect())
@@ -495,7 +514,8 @@ function App() {
       message.warning('尚未生成 360×80 极坐标帧')
       return
     }
-    const result = await deviceApi.exportFrame(frame)
+    const frames = recordedFramesRef.current.length > 0 ? recordedFramesRef.current : [frame]
+    const result = await deviceApi.exportFrames(frames, recordedFramesRef.current.length > 0 ? 4 : 1000 / 60)
     if (result.ok) message.success(result.message)
     else message.info(result.message)
   }
@@ -514,7 +534,9 @@ function App() {
       })
       return
     }
-    const result = await deviceApi.syncFrame(frame)
+    const frames = recordedFramesRef.current.length > 0 ? recordedFramesRef.current : [frame]
+    setRecording(false)
+    const result = await deviceApi.syncFrames(frames, recordedFramesRef.current.length > 0 ? 4 : 1000 / 60)
     if (!result.ok) {
       setSyncStatus((current) => ({ ...current, state: 'error', message: result.message, timestamp: Date.now() }))
     }
@@ -543,6 +565,7 @@ function App() {
           />
           <Tag color="cyan">{selectedScene.name}</Tag>
           <Tag variant="filled">3D 原型</Tag>
+          {(recording || recordedCount > 0) && <Tag color={recording ? "red" : "green"}>REC {recordedCount}F</Tag>}
           <div className="panel-toggles">
             <Button size="small" type={showLeft ? 'primary' : 'default'} onClick={() => setShowLeft((value) => !value)}>左栏</Button>
             <Button size="small" type={showRight ? 'primary' : 'default'} onClick={() => setShowRight((value) => !value)}>右栏</Button>
@@ -555,6 +578,13 @@ function App() {
           <Tooltip title="保存项目">
             <Button icon={<SaveOutlined />} />
           </Tooltip>
+          <Button
+            danger={recording}
+            icon={<VideoCameraOutlined />}
+            onClick={handleRecordingToggle}
+          >
+            {recording ? "停止录制" : "录制动画"}
+          </Button>
           <Button icon={<DownloadOutlined />} onClick={() => void handleExport()}>导出</Button>
           <Button
             type="primary"
@@ -629,7 +659,7 @@ function App() {
             <div className="viewport-stage">
               <div className="square-stage">
                 <div className="viewport-canvas">
-                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} onPolarFrame={(frame) => { polarFrameRef.current = frame }} />
+                  <EditorScene scene={selectedScene} playing={playing} speed={speed} cameraAngle={cameraAngle} brightness={brightness} onPolarFrame={(frame) => { polarFrameRef.current = frame; if (recording) { const frames = recordedFramesRef.current; if (frames.length < 128) { frames.push(frame); setRecordedCount(frames.length) } } }} />
                   <div className="viewport-overlay top-left">
                     <div className="hud-label">CAMERA</div>
                     <div className="hud-value">{cameraAngle}° / 38 mm</div>

@@ -9,12 +9,12 @@ import {
   FRAME_BYTES,
   SECTOR_PACKET_BYTES,
   concatPacketPackets,
-  crc32,
+  crc32Frames,
   decodeSyncAckPayload,
   encodeControlMessage,
   encodeFanFile,
   encodeSyncBeginPayload,
-  packFrameToPackets,
+  packFramesToPackets,
   type SyncAckInfo,
 } from '@fan360/core'
 import {
@@ -303,27 +303,37 @@ async function writeChunked(
   }
 }
 
-async function syncFrameToDevice(frame: Uint8Array): Promise<SyncFrameResult> {
+async function syncFramesToDevice(frames: Uint8Array[], fps: number): Promise<SyncFrameResult> {
   const socket = deviceSocket
   if (!socket || socket.destroyed || deviceStatus.state !== 'connected') {
     throw new Error('设备尚未连接')
   }
   if (syncInProgress) throw new Error('已有同步任务正在执行')
-  if (frame.byteLength !== FRAME_BYTES) throw new RangeError(`frame must be ${FRAME_BYTES} bytes`)
+  if (frames.length < 1 || frames.length > 255) throw new RangeError('frameCount must be from 1 to 255')
+  frames.forEach((frame) => {
+    if (frame.byteLength !== FRAME_BYTES) throw new RangeError(`frame must be ${FRAME_BYTES} bytes`)
+  })
+  if (!Number.isFinite(fps) || fps <= 0 || fps > 60) throw new RangeError('fps must be from 0 to 60')
 
   syncInProgress = true
   const sequence = ++syncSequence >>> 0
-  const packets = packFrameToPackets(frame, sequence & 0xffff)
+  const packets = packFramesToPackets(frames, sequence & 0xffff)
   const packetStream = concatPacketPackets(packets)
+  const payloadCrc32 = crc32Frames(frames)
+  const baseFps = 1000 / 60
+  const holdRevolutions = Math.max(1, Math.round(baseFps / fps))
+  const fpsMilli = Math.round(fps * 1000)
   const begin = encodeControlMessage(
     CONTROL_MESSAGE_TYPE.SYNC_BEGIN,
     sequence,
     encodeSyncBeginPayload({
-      frameCount: 1,
+      frameCount: frames.length,
       frameBytes: FRAME_BYTES,
       sectorPacketBytes: SECTOR_PACKET_BYTES,
-      payloadCrc32: crc32(frame),
+      holdRevolutions,
+      payloadCrc32,
       totalPacketBytes: packetStream.byteLength,
+      fpsMilli,
     }),
   )
   const commit = encodeControlMessage(CONTROL_MESSAGE_TYPE.SYNC_COMMIT, sequence)
@@ -336,7 +346,7 @@ async function syncFrameToDevice(frame: Uint8Array): Promise<SyncFrameResult> {
       transferredBytes: 0,
       totalBytes,
       progress: 0,
-      message: '正在准备 360 组角度数据',
+      message: `正在准备 ${frames.length} 帧 × 360 组角度数据`,
       timestamp: Date.now(),
     })
     const ackPromise = waitForSyncAck()
@@ -350,7 +360,7 @@ async function syncFrameToDevice(frame: Uint8Array): Promise<SyncFrameResult> {
       transferredBefore: begin.byteLength,
       totalBytes,
       state: 'uploading',
-      message: '正在传输 360 组角度数据',
+      message: `正在传输 ${frames.length} 帧角度数据`,
     })
     emitSyncStatus({
       state: 'committing',
@@ -399,10 +409,10 @@ function registerIpc() {
     console.log('[device] renderer requested TCP status')
     return deviceStatus
   })
-  ipcMain.handle(DEVICE_CHANNELS.syncFrame, (_event, frame: Uint8Array) => syncFrameToDevice(frame))
-  ipcMain.handle(DEVICE_CHANNELS.exportFrame, async (_event, frame: Uint8Array) => {
-    if (frame.byteLength !== FRAME_BYTES) {
-      return { ok: false, message: `帧大小必须为 ${FRAME_BYTES} B` }
+  ipcMain.handle(DEVICE_CHANNELS.syncFrames, (_event, frames: Uint8Array[], fps: number) => syncFramesToDevice(frames, fps))
+  ipcMain.handle(DEVICE_CHANNELS.exportFrames, async (_event, frames: Uint8Array[], fps: number) => {
+    if (frames.length < 1 || frames.length > 255 || frames.some((frame) => frame.byteLength !== FRAME_BYTES)) {
+      return { ok: false, message: `每帧必须为 ${FRAME_BYTES} B，帧数必须为 1 到 255` }
     }
     let filePath = process.env.FAN360_EXPORT_PATH
     if (!filePath) {
@@ -415,7 +425,7 @@ function registerIpc() {
       if (result.canceled || !result.filePath) return { ok: false, message: '已取消导出' }
       filePath = result.filePath
     }
-    await writeFile(filePath, encodeFanFile([frame], { fps: 1000 / 60 }))
+    await writeFile(filePath, encodeFanFile(frames, { fps }))
     return { ok: true, path: filePath, message: 'Fan360 帧导出成功' }
   })
 }

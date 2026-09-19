@@ -3,7 +3,7 @@ import { packSectorPacket, SECTOR_PACKET_BYTES } from './packet'
 import { FRAME_BYTES, FAN_SPEC } from './spec'
 
 export const CONTROL_MAGIC = 0x30363346
-export const CONTROL_VERSION = 1
+export const CONTROL_VERSION = 2
 export const CONTROL_HEADER_BYTES = 16
 export const CONTROL_CRC_BYTES = 4
 export const CONTROL_MAX_PAYLOAD_BYTES = 1024 * 1024
@@ -30,8 +30,10 @@ export type SyncBeginInfo = {
   frameCount: number
   frameBytes: number
   sectorPacketBytes: number
+  holdRevolutions: number
   payloadCrc32: number
   totalPacketBytes: number
+  fpsMilli: number
 }
 
 export type SyncAckInfo = {
@@ -41,27 +43,31 @@ export type SyncAckInfo = {
 
 export function encodeSyncBeginPayload(info: SyncBeginInfo): Uint8Array {
   if (info.frameCount < 1 || info.frameCount > 0xffff) throw new RangeError('frameCount must fit in uint16 and be positive')
-  const payload = new Uint8Array(20)
+  if (info.holdRevolutions < 1 || info.holdRevolutions > 0xffff) throw new RangeError('holdRevolutions must fit in uint16 and be positive')
+  const payload = new Uint8Array(24)
   const view = new DataView(payload.buffer)
   view.setUint16(0, info.frameCount, true)
   view.setUint16(2, 0, true)
   view.setUint32(4, info.frameBytes, true)
   view.setUint16(8, info.sectorPacketBytes, true)
-  view.setUint16(10, 0, true)
+  view.setUint16(10, info.holdRevolutions, true)
   view.setUint32(12, info.payloadCrc32, true)
   view.setUint32(16, info.totalPacketBytes, true)
+  view.setUint32(20, info.fpsMilli, true)
   return payload
 }
 
 export function decodeSyncBeginPayload(payload: Uint8Array): SyncBeginInfo {
-  if (payload.byteLength !== 20) throw new RangeError('SYNC_BEGIN payload must be 20 bytes')
+  if (payload.byteLength !== 24) throw new RangeError('SYNC_BEGIN payload must be 24 bytes')
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
   return {
     frameCount: view.getUint16(0, true),
     frameBytes: view.getUint32(4, true),
     sectorPacketBytes: view.getUint16(8, true),
+    holdRevolutions: view.getUint16(10, true),
     payloadCrc32: view.getUint32(12, true),
     totalPacketBytes: view.getUint32(16, true),
+    fpsMilli: view.getUint32(20, true),
   }
 }
 
@@ -148,6 +154,17 @@ export function packFrameToPackets(frame: Uint8Array, sequenceBase = 0): Uint8Ar
     packets.push(packSectorPacket(frame, angle, (sequenceBase + angle) & 0xffff, 1))
   }
   return packets
+}
+
+export function packFramesToPackets(frames: Uint8Array[], sequenceBase = 0): Uint8Array[] {
+  if (frames.length < 1 || frames.length > 255) throw new RangeError('frames must contain 1 to 255 entries')
+  return frames.flatMap((frame, frameIndex) => packFrameToPackets(frame, (sequenceBase + frameIndex * FAN_SPEC.angleCount) & 0xffff))
+}
+
+export function crc32Frames(frames: Uint8Array[]): number {
+  let checksum = 0
+  for (const frame of frames) checksum = crc32(frame, checksum)
+  return checksum
 }
 
 export function concatPacketPackets(packets: Uint8Array[]): Uint8Array {

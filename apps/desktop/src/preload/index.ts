@@ -5,8 +5,8 @@ const deviceApi: DeviceApi = {
   getStatus: () => ipcRenderer.invoke(DEVICE_CHANNELS.getStatus),
   connect: (request: TcpConnectRequest) => ipcRenderer.invoke(DEVICE_CHANNELS.connect, request),
   disconnect: () => ipcRenderer.invoke(DEVICE_CHANNELS.disconnect),
-  syncFrame: (frame) => ipcRenderer.invoke(DEVICE_CHANNELS.syncFrame, frame),
-  exportFrame: (frame) => ipcRenderer.invoke(DEVICE_CHANNELS.exportFrame, frame),
+  syncFrames: (frames, fps) => ipcRenderer.invoke(DEVICE_CHANNELS.syncFrames, frames, fps),
+  exportFrames: (frames, fps) => ipcRenderer.invoke(DEVICE_CHANNELS.exportFrames, frames, fps),
   onStatus: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, status: DeviceStatus) => listener(status)
     ipcRenderer.on(DEVICE_CHANNELS.status, handler)

@@ -45,8 +45,8 @@ export type DeviceApi = {
   getStatus: () => Promise<DeviceStatus>
   connect: (request: TcpConnectRequest) => Promise<TcpConnectResult>
   disconnect: () => Promise<DeviceStatus>
-  syncFrame: (frame: Uint8Array) => Promise<SyncFrameResult>
-  exportFrame: (frame: Uint8Array) => Promise<ExportFrameResult>
+  syncFrames: (frames: Uint8Array[], fps: number) => Promise<SyncFrameResult>
+  exportFrames: (frames: Uint8Array[], fps: number) => Promise<ExportFrameResult>
   onStatus: (listener: (status: DeviceStatus) => void) => () => void
   onSyncStatus: (listener: (status: DeviceSyncStatus) => void) => () => void
 }
@@ -56,7 +56,7 @@ export const DEVICE_CHANNELS = {
   disconnect: 'device:tcp:disconnect',
   getStatus: 'device:tcp:get-status',
   status: 'device:tcp:status',
-  syncFrame: 'device:sync:frame',
-  exportFrame: 'device:export:frame',
+  syncFrames: 'device:sync:frames',
+  exportFrames: 'device:export:frames',
   syncStatus: 'device:sync:status',
 } as const
