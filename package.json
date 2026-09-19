@@ -12,5 +12,9 @@
     "typecheck": "npm run typecheck --workspace @fan360/core && npm run typecheck --workspace @fan360/desktop",
     "test": "call \"%npm_node_execpath%\" node_modules/vitest/vitest.mjs run",
     "package": "npm run package --workspace @fan360/desktop"
+  },
+  "dependencies": {
+    "antd": "5.27.6",
+    "@ant-design/v5-patch-for-react-19": "1.0.3"
   }
 }

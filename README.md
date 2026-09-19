@@ -13,7 +13,7 @@
 - [UI 设计方案](docs/ui-design.md)
   - 主工作台布局
   - 场景库、3D 编辑器、参数检查器、时间轴、设备仿真和数据预览
-  - Ant Design 组件映射和验收标准
+  - Ant Design 5 组件映射、参考主题和验收标准
 - [开发任务清单](docs/development-plan.md)
   - M0 到 M9 里程碑
   - 每项任务的验收证据
@@ -84,7 +84,7 @@ npm run build
 当前已完成：
 
 - Electron + electron-vite + React + TypeScript 工程
-- Ant Design 深色工作台
+- Ant Design 5.27.6 浅色工作台（对齐 Touch_Key 参考项目）
 - 大正方形 3D 视口
 - 圆形设备显示区域遮罩和开关
 - 左栏、右栏、下方预览独立显示/隐藏

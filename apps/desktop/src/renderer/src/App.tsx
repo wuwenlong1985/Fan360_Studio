@@ -622,7 +622,7 @@ function App() {
             options={['编辑', '真实设备', '数据']}
           />
           <Tag color="cyan">{selectedScene.name}</Tag>
-          <Tag variant="filled">3D 原型</Tag>
+          <Tag>3D 原型</Tag>
           {(recording || recordedCount > 0) && <Tag color={recording ? "red" : "green"}>REC {recordedCount}F</Tag>}
           {importedModel?.mainFile && <Tag color="purple">{importedModel.mainFile}</Tag>}
           <div className="panel-toggles">

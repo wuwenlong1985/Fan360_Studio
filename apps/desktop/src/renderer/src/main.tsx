@@ -1,3 +1,4 @@
+import '@ant-design/v5-patch-for-react-19'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App as AntdApp, ConfigProvider, theme } from 'antd'
@@ -10,29 +11,34 @@ createRoot(document.getElementById('root')!).render(
     <ConfigProvider
       locale={zhCN}
       theme={{
-        algorithm: theme.darkAlgorithm,
+        algorithm: theme.defaultAlgorithm,
         token: {
-          colorPrimary: '#25d9ff',
-          colorInfo: '#25d9ff',
-          colorBgBase: '#05090f',
-          colorBgContainer: '#0d151f',
-          colorBorder: '#203143',
-          borderRadius: 10,
-          fontFamily:
-            'Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif',
+          colorPrimary: '#2475ed',
+          colorInfo: '#2475ed',
+          colorText: '#25354b',
+          colorTextSecondary: '#7d899c',
+          colorBgBase: '#f3f5f9',
+          colorBgContainer: '#ffffff',
+          colorBorder: '#e0e7f0',
+          borderRadius: 7,
+          controlHeight: 34,
+          fontFamily: '"Segoe UI", "Microsoft YaHei", sans-serif',
         },
         components: {
-          Layout: {
-            headerBg: 'rgba(8, 15, 24, 0.94)',
-            siderBg: '#09111b',
-            bodyBg: '#05090f',
+          Button: {
+            fontWeight: 500,
           },
           Card: {
-            colorBgContainer: '#0d151f',
+            headerFontSize: 14,
+          },
+          Layout: {
+            headerBg: '#ffffff',
+            siderBg: '#ffffff',
+            bodyBg: '#f3f5f9',
           },
           Segmented: {
-            itemSelectedBg: '#17384b',
-            itemSelectedColor: '#8feaff',
+            itemSelectedBg: '#eaf2ff',
+            itemSelectedColor: '#2475ed',
           },
         },
       }}
