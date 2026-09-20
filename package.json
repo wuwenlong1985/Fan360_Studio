@@ -11,6 +11,7 @@
     "build": "npm run build --workspace @fan360/desktop",
     "typecheck": "npm run typecheck --workspace @fan360/core && npm run typecheck --workspace @fan360/desktop",
     "test": "call \"%npm_node_execpath%\" node_modules/vitest/vitest.mjs run",
+    "test:render": "npm run build && call \"%npm_node_execpath%\" apps/desktop/scripts/render-smoke.mjs",
     "package": "npm run package --workspace @fan360/desktop"
   },
   "dependencies": {

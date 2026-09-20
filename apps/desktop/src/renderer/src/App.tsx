@@ -1,10 +1,11 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Environment, Float, OrbitControls } from '@react-three/drei'
+import { Environment, OrbitControls } from '@react-three/drei'
 import { ProceduralScene } from './scenes/ProceduralScene'
 import { applyBloom, rgbaToFanFrame } from '@fan360/core'
 import { sceneCatalog as scenes, type SceneItem } from './scenes/sceneCatalog'
-import { LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget } from 'three'
+import { ACESFilmicToneMapping, Color, LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, WebGLRenderTarget } from 'three'
+import studioEnvironment from '@pmndrs/assets/hdri/studio.exr.js'
 import { deviceApi } from './services/deviceClient'
 import { projectApi, type ProjectDocument } from './services/projectClient'
 import type { DeviceStatus, DeviceSyncStatus, ImportModelResult } from '../../shared/device'
@@ -35,7 +36,7 @@ import {
   Layout,
   Progress,
   Row,
-  Segmented,
+  Popover,
   Select,
   Slider,
   Space,
@@ -79,6 +80,7 @@ function PolarCapture({
     [],
   )
   const pixels = useMemo(() => new Uint8Array(size * size * 4), [])
+  const captureBackground = useMemo(() => new Color('#000000'), [])
   const workerRef = useRef<Worker | null>(null)
   const workerFailed = useRef(false)
   const workerBusy = useRef(false)
@@ -118,15 +120,28 @@ function PolarCapture({
     }
   }, [target])
 
+  // A positive priority disables R3F's screen render. Capture device frames at
+  // the default priority so R3F still draws the viewport on every animation frame.
   useFrame((state) => {
     const interval = playing ? 0.25 : 1
     if (workerBusy.current || state.clock.elapsedTime - lastCapture.current < interval) return
     lastCapture.current = state.clock.elapsedTime
     const previousTarget = gl.getRenderTarget()
-    gl.setRenderTarget(target)
-    gl.render(scene, camera)
-    gl.readRenderTargetPixels(target, 0, 0, size, size, pixels)
-    gl.setRenderTarget(previousTarget)
+    const previousBackground = scene.background
+    const stage = scene.getObjectByName('studio-stage')
+    const stageVisible = stage?.visible ?? false
+    try {
+      // The studio floor is an editing aid. Fan output needs a black background.
+      if (stage) stage.visible = false
+      scene.background = captureBackground
+      gl.setRenderTarget(target)
+      gl.render(scene, camera)
+      gl.readRenderTargetPixels(target, 0, 0, size, size, pixels)
+    } finally {
+      gl.setRenderTarget(previousTarget)
+      scene.background = previousBackground
+      if (stage) stage.visible = stageVisible
+    }
     if (workerFailed.current || !workerRef.current) {
       const processed = bloomEnabled ? applyBloom(pixels, size, size, { threshold: 0.62, strength: bloomStrength, radius: 6, downsample: 4 }) : pixels
       onFrameRef.current(rgbaToFanFrame({ data: processed, width: size, height: size, flipY: true }, { radius: size * 0.46, brightness: brightness / 100, gamma: 1, sampling: 'bilinear' }))
@@ -144,36 +159,15 @@ function PolarCapture({
       },
       [transferable],
     )
-  }, 1)
+  })
 
   return null
-}
-
-function StudioEnvironment() {
-  const [files, setFiles] = useState<string | null>(null)
-  useEffect(() => {
-    let active = true
-    void import('@pmndrs/assets/hdri/studio.exr')
-      .then((module) => { if (active) setFiles(module.default) })
-      .catch((error) => console.error('[environment] failed to load HDR', error))
-    return () => {
-      active = false
-    }
-  }, [])
-  if (!files) return null
-  return (
-    <Suspense fallback={null}>
-      <Environment files={files} background={false} />
-    </Suspense>
-  )
 }
 
 class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
 
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
+  static getDerivedStateFromError() { return { failed: true } }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[scene-error]', error, info.componentStack)
@@ -225,21 +219,11 @@ class WebGLErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 
 function SceneStage() {
   return (
-    <group>
-      <mesh scale={2.05}>
-        <icosahedronGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#4d9cf0" wireframe transparent opacity={0.16} />
+    <group name="studio-stage">
+      <mesh receiveShadow position={[0, -1.55, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial color="#14181d" roughness={0.84} metalness={0.06} />
       </mesh>
-      <gridHelper args={[9, 36, '#5095d8', '#203b58']} position={[0, -1.54, 0]} />
-      <mesh position={[0, 0.2, -2.3]}>
-        <circleGeometry args={[2.65, 80]} />
-        <meshBasicMaterial color="#10243a" />
-      </mesh>
-      <mesh position={[0, 0.2, -2.25]}>
-        <torusGeometry args={[1.85, 0.025, 10, 120]} />
-        <meshBasicMaterial color="#4ea8ff" />
-      </mesh>
-      <hemisphereLight args={['#e7f5ff', '#1c2c46', 1.15]} />
     </group>
   )
 }
@@ -247,45 +231,48 @@ function SceneStage() {
 function EditorScene({ scene, playing, speed, cameraAngle, brightness, bloomEnabled, bloomStrength, onPolarFrame, onPolarStats, modelAsset }: { scene: SceneItem; playing: boolean; speed: number; cameraAngle: number; brightness: number; bloomEnabled: boolean; bloomStrength: number; onPolarFrame: (frame: Uint8Array) => void; onPolarStats: (processingMs: number) => void; modelAsset?: ImportModelResult | null }) {
   return (
     <Canvas
-      shadows="basic"
-      dpr={[1, 1.5]}
-      camera={{ position: [0, 0.2, 3.8], fov: 38 }}
+      shadows="soft"
+      dpr={[1, 2]}
+      camera={{ position: [0, 0.25, 5.8], fov: 38 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
-      onCreated={({ gl }) => { gl.domElement.dataset.webglReady = 'true' }}
+      onCreated={({ gl }) => {
+        gl.domElement.dataset.webglReady = 'true'
+        gl.toneMapping = ACESFilmicToneMapping
+        gl.toneMappingExposure = 1.05
+        gl.outputColorSpace = SRGBColorSpace
+      }}
     >
-      <color attach="background" args={['#17314d']} />
-      <fog attach="fog" args={['#17314d', 6.2, 11]} />
+      <color attach="background" args={['#11151b']} />
+      <fog attach="fog" args={['#11151b', 10, 24]} />
       <SceneStage />
-      <StudioEnvironment />
-      <ambientLight intensity={0.95} />
-      <directionalLight position={[4, 6, 4]} intensity={3.1} castShadow shadow-mapSize={[1024, 1024]} />
-      <pointLight position={[-4, 0, -2]} color="#207cff" intensity={4} />
-      <Float speed={playing ? 1.2 * speed : 0} rotationIntensity={0.16} floatIntensity={0.28}>
+      <Suspense fallback={null}>
+        <Environment files={studioEnvironment} environmentIntensity={0.5} environmentRotation={[0, Math.PI / 3, 0]} />
+      </Suspense>
+      <ambientLight intensity={0.18} />
+      <directionalLight position={[-3, 5, 4]} color="#fff2df" intensity={1.8} castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0002} shadow-normalBias={0.03} />
+      <directionalLight position={[4, 1, 2]} color="#dce8ff" intensity={0.6} />
+      <directionalLight position={[1, 4, -4]} color="#ffffff" intensity={1.8} />
         <group rotation={[0.08, (cameraAngle * Math.PI) / 180, 0]}>
           <SceneErrorBoundary key={scene.id}>
-            <ProceduralScene
-              sceneId={scene.id}
-              modelAsset={modelAsset}
-              accent={scene.accent}
-              second={scene.second}
-              playing={playing}
-              speed={speed}
-            />
+            <Suspense fallback={null}>
+              <ProceduralScene
+                sceneId={scene.id}
+                modelAsset={modelAsset}
+                accent={scene.accent}
+                second={scene.second}
+                playing={playing}
+                speed={speed}
+              />
+            </Suspense>
           </SceneErrorBoundary>
         </group>
-      </Float>
       <PolarCapture playing={playing} brightness={brightness} bloomEnabled={bloomEnabled} bloomStrength={bloomStrength} onFrame={onPolarFrame} onStats={onPolarStats} />
-      <ContactShadows position={[0, -1.55, 0]} opacity={0.45} scale={5} blur={2.7} far={4} color="#000000" />
-      <mesh position={[0, -1.55, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[2.25, 80]} />
-        <meshStandardMaterial color="#0b1824" roughness={0.92} metalness={0.18} />
-      </mesh>
       <OrbitControls
         enablePan={false}
         enableDamping
         dampingFactor={0.08}
         minDistance={2.7}
-        maxDistance={6.2}
+        maxDistance={9}
         minPolarAngle={0.55}
         maxPolarAngle={2.35}
       />
@@ -523,6 +510,19 @@ function sceneIcon(scene: SceneItem) {
   )
 }
 
+function DisplayOptions({ showRight, showBottom, showCircleMask, onRight, onBottom, onCircle }: {
+  showRight: boolean; showBottom: boolean; showCircleMask: boolean
+  onRight: (value: boolean) => void; onBottom: (value: boolean) => void; onCircle: (value: boolean) => void
+}) {
+  return (
+    <div className="display-options">
+      <div><span>右侧参数栏</span><Switch aria-label="显示右侧参数栏" checked={showRight} onChange={onRight} /></div>
+      <div><span>下方设备预览</span><Switch aria-label="显示下方设备预览" checked={showBottom} onChange={onBottom} /></div>
+      <div><span>设备圆框</span><Switch aria-label="显示设备圆框" checked={showCircleMask} onChange={onCircle} /></div>
+    </div>
+  )
+}
+
 function App() {
   const { message } = AntdApp.useApp()
   const [selectedScene, setSelectedScene] = useState<SceneItem>(scenes[0])
@@ -717,7 +717,6 @@ function App() {
           </div>
           <div className="brand-copy">
             <h1>FAN360 <span>裸眼3D风扇工作台</span></h1>
-            <p>REALTIME VOLUMETRIC DISPLAY <span>•</span> 360° × 80 LED</p>
           </div>
         </div>
         <div className="topbar-center">
@@ -735,36 +734,8 @@ function App() {
             listHeight={420}
             aria-label="选择 3D 场景"
           />
-          <Segmented
-            value={viewMode}
-            onChange={(value) => setViewMode(String(value))}
-            options={['编辑', '真实设备', '数据']}
-          />
-          <Tag color="cyan">{selectedScene.name}</Tag>
-          <Tag>3D 原型</Tag>
-          {(recording || recordedCount > 0) && <Tag color={recording ? "red" : "green"}>REC {recordedCount}F</Tag>}
-          {importedModel?.mainFile && <Tag color="purple">{importedModel.mainFile}</Tag>}
-          <div className="panel-toggles">
-            <Button size="small" type={showRight ? 'primary' : 'default'} onClick={() => setShowRight((value) => !value)}>右栏</Button>
-            <Button size="small" type={showBottom ? 'primary' : 'default'} onClick={() => setShowBottom((value) => !value)}>下方</Button>
-            <Button size="small" type={showCircleMask ? 'primary' : 'default'} onClick={() => setShowCircleMask((value) => !value)}>圆框</Button>
-          </div>
         </div>
-        <Space size={10}>
-          <Badge status={deviceBadgeStatus} text={<span className="status-text">{connected ? "TCP 设备已连接" : deviceStatus.state === "connecting" ? "TCP 连接中" : "TCP 设备待连接"}</span>} />
-          <Tooltip title="保存项目">
-            <Button aria-label="保存项目" icon={<SaveOutlined />} onClick={() => void handleSaveProject()} />
-          </Tooltip>
-          <Tooltip title="打开项目">
-            <Button aria-label="打开项目" icon={<FolderOpenOutlined />} onClick={() => void handleLoadProject()} />
-          </Tooltip>
-          <Button
-            danger={recording}
-            icon={<VideoCameraOutlined />}
-            onClick={handleRecordingToggle}
-          >
-            {recording ? "停止录制" : "录制动画"}
-          </Button>
+        <Space size={12} className="header-actions">
           <Button icon={<DownloadOutlined />} onClick={() => void handleExport()}>导出</Button>
           <Button
             type="primary"
@@ -773,7 +744,7 @@ function App() {
             loading={syncBusy}
             onClick={() => void handleUpload()}
           >
-            上传并运行
+            下载到设备
           </Button>
         </Space>
       </header>
@@ -884,8 +855,8 @@ function App() {
           )}
         </Content>
 
-        {showRight && (
-        <Sider width={318} className="inspector-sider">
+        <Sider width={318} collapsed={!showRight} collapsedWidth={48} trigger={null} className={`inspector-sider ${showRight ? '' : 'inspector-collapsed'}`}>
+          {showRight ? <>
           <div className="inspector-head">
             <div>
               <div className="eyebrow">INSPECTOR</div>
@@ -895,7 +866,7 @@ function App() {
           </div>
           <Collapse
             className="inspector-collapse"
-            defaultActiveKey={['scene', 'camera', 'device']}
+            defaultActiveKey={['scene', 'display', 'device']}
             items={[
               {
                 key: 'scene',
@@ -909,6 +880,10 @@ function App() {
                     <Button block icon={<ExperimentOutlined />} onClick={() => void handleImportModel()} style={{ marginTop: 10 }}>
                       导入 GLB / glTF 模型
                     </Button>
+                    <Space className="project-actions">
+                      <Button icon={<SaveOutlined />} onClick={() => void handleSaveProject()}>保存项目</Button>
+                      <Button icon={<FolderOpenOutlined />} onClick={() => void handleLoadProject()}>打开项目</Button>
+                    </Space>
                   </div>
                 ),
               },
@@ -940,6 +915,12 @@ function App() {
                 label: '动画',
                 children: (
                   <Form layout="vertical" className="inspector-form">
+                    <Form.Item label="动画录制">
+                      <Space wrap>
+                        <Button danger={recording} icon={<VideoCameraOutlined />} onClick={handleRecordingToggle}>{recording ? '停止录制' : '录制动画'}</Button>
+                        {(recording || recordedCount > 0) && <Tag color={recording ? 'red' : 'green'}>{recordedCount} 帧</Tag>}
+                      </Space>
+                    </Form.Item>
                     <Form.Item label="播放速率">
                       <Slider value={speed} onChange={setSpeed} min={0.1} max={4} step={0.1} marks={{ 0.1: '0.1×', 1: '1×', 4: '4×' }} />
                     </Form.Item>
@@ -960,6 +941,8 @@ function App() {
                 label: '显示',
                 children: (
                   <Form layout="vertical" className="inspector-form">
+                    <DisplayOptions showRight={showRight} showBottom={showBottom} showCircleMask={showCircleMask} onRight={setShowRight} onBottom={setShowBottom} onCircle={setShowCircleMask} />
+                    <Divider />
                     <Form.Item label="输出亮度">
                       <Slider value={brightness} onChange={setBrightness} min={0} max={100} />
                     </Form.Item>
@@ -990,7 +973,7 @@ function App() {
                         <b>TCP 风扇设备</b>
                         <div className="muted">{deviceStatus.message ?? (connected ? `${deviceIp}:5000 · 已连接` : '等待手动连接')}</div>
                       </div>
-                      <Badge status={connected ? 'success' : 'default'} />
+                      <Badge status={deviceBadgeStatus} />
                     </div>
                     <Divider />
                     <Form layout="vertical" className="device-connect-form">
@@ -1038,17 +1021,17 @@ function App() {
               },
             ]}
           />
+          </> : (
+            <Popover placement="leftTop" trigger="click" title="显示" content={
+              <DisplayOptions showRight={showRight} showBottom={showBottom} showCircleMask={showCircleMask} onRight={setShowRight} onBottom={setShowBottom} onCircle={setShowCircleMask} />
+            }>
+              <Button aria-label="显示设置" title="显示设置" type="text" icon={<SettingOutlined />} />
+            </Popover>
+          )}
         </Sider>
-        )}
       </Layout>
     </Layout>
   )
 }
 
 export default App
-
-
-
-
-
-

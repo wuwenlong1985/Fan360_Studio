@@ -630,7 +630,7 @@ select {
 }
 
 @media (max-width: 1360px) {
-  .inspector-sider {
+  .inspector-sider:not(.inspector-collapsed) {
     width: 286px !important;
     min-width: 286px !important;
     max-width: 286px !important;
@@ -734,13 +734,14 @@ select {
   }
 }
 
-/* Exact Touch_Key header structure */
+/* Three-part header: brand, scene selection, output actions. */
 .app-header {
-  height: 60px;
+  height: 72px;
   padding: 0 15px;
   background: #ffffff;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px minmax(0, 1fr);
+  gap: 24px;
   align-items: center;
   flex-shrink: 0;
   border-bottom: 1px solid #e8edf4;
@@ -778,7 +779,7 @@ select {
 }
 
 .workspace {
-  height: calc(100vh - 60px) !important;
+  height: calc(100vh - 72px) !important;
 }
 
 /* Native title bar overlay and draggable application header */
@@ -786,6 +787,44 @@ select {
   background: #f3f5f9 !important;
   padding-right: 150px !important;
   -webkit-app-region: drag;
+}
+
+.app-header .scene-select {
+  width: 280px;
+  flex-basis: 280px;
+}
+
+.header-actions {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.brand-copy h1 { white-space: nowrap; }
+.brand-mark { flex-shrink: 0; }
+
+.display-options { min-width: 218px; }
+.display-options > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 36px;
+  color: #53657d;
+  font-size: 12px;
+}
+
+.inspector-sider.inspector-collapsed {
+  padding: 14px 7px;
+  overflow: visible;
+}
+
+.project-actions { margin-top: 12px; }
+
+@media (max-width: 1280px) {
+  .app-header { grid-template-columns: minmax(0, 1fr) 230px minmax(0, 1fr); gap: 14px; }
+  .app-header .scene-select { width: 230px; flex-basis: 230px; }
+  .brand-copy h1 { font-size: 19px; }
+  .brand-copy h1 span { font-size: 15px; margin-left: 6px; }
 }
 
 .app-header button,

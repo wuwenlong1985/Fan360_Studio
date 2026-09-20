@@ -1,12 +1,11 @@
 import { Suspense, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import type { SceneId } from './sceneCatalog'
-import { Gltf, Text } from '@react-three/drei'
+import { Center, Gltf, Text3D as ExtrudedText } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import {
   AdditiveBlending,
   AnimationMixer,
   Box3,
-  CanvasTexture,
   DoubleSide,
   Float32BufferAttribute,
   Group,
@@ -18,6 +17,8 @@ import {
   type BufferGeometry,
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
+import { RealisticStrawberry, RealisticPortrait, RealisticEarth, RealisticGift, RealisticRose, RealisticAstronaut, RealisticDiamond, RealisticCar } from './RealisticObjects'
 import type { ImportModelResult } from '../../../shared/device'
 const FONT_URL = new URL('../assets/helvetiker_regular.typeface.json', import.meta.url).href
 
@@ -51,43 +52,6 @@ function AnimatedGroup({ playing, speed, children, spin = 0.65 }: SceneProps & {
   return <group ref={ref}>{children}</group>
 }
 
-function Strawberry({ accent, second, playing, speed }: SceneProps) {
-  const group = useRef<Group>(null)
-  const seeds = useMemo(
-    () =>
-      Array.from({ length: 34 }, (_, index) => {
-        const t = (index + 0.5) / 34
-        const phi = Math.acos(1 - 2 * t)
-        const theta = Math.PI * (1 + Math.sqrt(5)) * (index + 0.5)
-        return [Math.sin(phi) * Math.cos(theta), Math.cos(phi) * 1.2, Math.sin(phi) * Math.sin(theta)] as [number, number, number]
-      }),
-    [],
-  )
-  useFrame((_, delta) => {
-    if (group.current && playing) group.current.rotation.y += delta * speed * 0.62
-  })
-  return (
-    <group ref={group} position={[0, -0.05, 0]}>
-      <mesh castShadow scale={[1, 1.2, 1]}>
-        <sphereGeometry args={[1, 64, 64]} />
-        <meshPhysicalMaterial color={accent} roughness={0.28} clearcoat={0.55} clearcoatRoughness={0.18} emissive={accent} emissiveIntensity={0.08} />
-      </mesh>
-      {seeds.map((position, index) => (
-        <mesh key={index} position={position} scale={0.052}>
-          <sphereGeometry args={[1, 10, 10]} />
-          <meshStandardMaterial color="#ffd166" emissive="#ff9d2e" emissiveIntensity={0.35} />
-        </mesh>
-      ))}
-      {[0, 1, 2, 3, 4].map((index) => (
-        <mesh key={index} position={[(index - 2) * 0.27, 1.23 - Math.abs(index - 2) * 0.06, 0]} rotation={[0, 0, (index - 2) * 0.24]}>
-          <coneGeometry args={[0.16, 0.72, 7]} />
-          <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.2} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
-
 function Santa({ accent, second, playing, speed }: SceneProps) {
   return (
     <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.4}>
@@ -118,31 +82,6 @@ function Santa({ accent, second, playing, speed }: SceneProps) {
   )
 }
 
-function Portrait({ accent, second, playing, speed }: SceneProps) {
-  const hair = useMemo(() => Array.from({ length: 18 }, (_, index) => ({ angle: (index / 18) * Math.PI * 2, y: 0.44 + Math.sin(index * 1.8) * 0.2 })), [])
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.34}>
-      <mesh position={[0, 0.18, 0]} scale={[0.82, 1.12, 0.8]}>
-        <sphereGeometry args={[1, 48, 48]} />
-        <meshPhysicalMaterial color={accent} roughness={0.46} clearcoat={0.18} />
-      </mesh>
-      <mesh position={[0, 0.12, 0.73]} scale={[0.47, 0.72, 0.18]}>
-        <sphereGeometry args={[1, 32, 32]} />
-        <meshStandardMaterial color="#f0b79f" roughness={0.52} />
-      </mesh>
-      {hair.map((item, index) => (
-        <mesh key={index} position={[Math.cos(item.angle) * 0.78, item.y, Math.sin(item.angle) * 0.75]} scale={[0.2, 0.46, 0.2]}>
-          <sphereGeometry args={[1, 18, 18]} />
-          <meshStandardMaterial color={second} roughness={0.32} metalness={0.18} />
-        </mesh>
-      ))}
-      <mesh position={[-0.19, 0.28, 0.85]}><sphereGeometry args={[0.048, 12, 12]} /><meshBasicMaterial color="#15202a" /></mesh>
-      <mesh position={[0.19, 0.28, 0.85]}><sphereGeometry args={[0.048, 12, 12]} /><meshBasicMaterial color="#15202a" /></mesh>
-      <mesh position={[0, -0.02, 0.89]}><sphereGeometry args={[0.08, 16, 16]} /><meshStandardMaterial color="#d96e76" /></mesh>
-    </AnimatedGroup>
-  )
-}
-
 function Countdown({ accent, second, playing }: SceneProps) {
   const [value, setValue] = useState(3)
   useEffect(() => {
@@ -152,82 +91,14 @@ function Countdown({ accent, second, playing }: SceneProps) {
   }, [playing])
   return (
     <group>
-      <Text font={FONT_URL} fontSize={2.15} anchorX="center" anchorY="middle" letterSpacing={-0.08}>
-        {String(value)}
-        <meshStandardMaterial color={accent} emissive={second} emissiveIntensity={0.72} metalness={0.52} roughness={0.2} />
-      </Text>
+      <Center cacheKey={value}>
+        <ExtrudedText font={FONT_URL} size={2.15} height={0.12}>
+          {String(value)}
+          <meshStandardMaterial color={accent} emissive={second} emissiveIntensity={0.72} metalness={0.52} roughness={0.2} />
+        </ExtrudedText>
+      </Center>
       <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[1.55, 0.035, 12, 120]} /><meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.9} /></mesh>
     </group>
-  )
-}
-
-function Earth({ accent, second, playing, speed }: SceneProps) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 512
-    const context = canvas.getContext('2d')
-    if (context) {
-      const gradient = context.createLinearGradient(0, 0, 1024, 512)
-      gradient.addColorStop(0, '#063f8f')
-      gradient.addColorStop(0.5, '#0c7fc4')
-      gradient.addColorStop(1, '#041f55')
-      context.fillStyle = gradient
-      context.fillRect(0, 0, 1024, 512)
-      context.fillStyle = second
-      const lands = [[120, 180, 150, 70], [320, 120, 120, 55], [460, 235, 90, 110], [710, 170, 180, 80], [850, 310, 90, 45]]
-      lands.forEach(([x, y, rx, ry], index) => {
-        context.beginPath()
-        for (let step = 0; step <= 40; step += 1) {
-          const angle = (step / 40) * Math.PI * 2
-          const wobble = 1 + Math.sin(step * 2.1 + index) * 0.18
-          const px = x + Math.cos(angle) * rx * wobble
-          const py = y + Math.sin(angle) * ry * wobble
-          if (step === 0) context.moveTo(px, py)
-          else context.lineTo(px, py)
-        }
-        context.fill()
-      })
-    }
-    return new CanvasTexture(canvas)
-  }, [second])
-  useEffect(() => () => texture.dispose(), [texture])
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.33}>
-      <mesh><sphereGeometry args={[1.35, 72, 72]} /><meshStandardMaterial map={texture} roughness={0.7} emissive={accent} emissiveIntensity={0.06} /></mesh>
-      <mesh scale={1.055}><sphereGeometry args={[1.35, 48, 48]} /><meshBasicMaterial color="#4edcff" transparent opacity={0.11} blending={AdditiveBlending} side={DoubleSide} /></mesh>
-      <mesh rotation={[1.2, 0.3, 0]}><torusGeometry args={[1.72, 0.012, 8, 140]} /><meshBasicMaterial color="#6be8ff" transparent opacity={0.42} /></mesh>
-    </AnimatedGroup>
-  )
-}
-
-function Gift({ accent, second, playing, speed }: SceneProps) {
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.42}>
-      <mesh position={[0, -0.1, 0]}><boxGeometry args={[1.8, 1.5, 1.8]} /><meshStandardMaterial color={accent} roughness={0.42} metalness={0.08} /></mesh>
-      <mesh position={[0, -0.1, 0]}><boxGeometry args={[0.34, 1.54, 1.84]} /><meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.18} /></mesh>
-      <mesh position={[0, -0.1, 0]}><boxGeometry args={[1.84, 1.54, 0.34]} /><meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.18} /></mesh>
-      <mesh position={[-0.32, 0.9, 0]} rotation={[0, 0, -0.55]}><torusGeometry args={[0.35, 0.13, 14, 40]} /><meshStandardMaterial color={second} /></mesh>
-      <mesh position={[0.32, 0.9, 0]} rotation={[0, 0, 0.55]}><torusGeometry args={[0.35, 0.13, 14, 40]} /><meshStandardMaterial color={second} /></mesh>
-    </AnimatedGroup>
-  )
-}
-
-function Rose({ accent, second, playing, speed }: SceneProps) {
-  const petals = useMemo(() => Array.from({ length: 22 }, (_, index) => ({ angle: index * 2.4, radius: 0.35 + (index % 5) * 0.075, y: -0.07 * (index % 4) })), [])
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.3}>
-      <mesh position={[0, -0.65, 0]}><cylinderGeometry args={[0.055, 0.075, 2.1, 12]} /><meshStandardMaterial color={second} /></mesh>
-      <mesh rotation={[0.35, 0, 0.4]} position={[0.25, -0.35, 0]}><sphereGeometry args={[0.35, 24, 16]} /><meshStandardMaterial color="#3ecb79" /></mesh>
-      <group position={[0, 0.65, 0]}>
-        {petals.map((petal, index) => (
-          <mesh key={index} position={[Math.cos(petal.angle) * petal.radius, petal.y + index * 0.012, Math.sin(petal.angle) * petal.radius]} rotation={[0.65, petal.angle, 0]} scale={[0.45, 0.17, 0.28]}>
-            <sphereGeometry args={[1, 20, 12]} />
-            <meshPhysicalMaterial color={index % 2 ? accent : '#ff6b94'} roughness={0.34} clearcoat={0.28} side={DoubleSide} />
-          </mesh>
-        ))}
-      </group>
-    </AnimatedGroup>
   )
 }
 
@@ -281,18 +152,6 @@ function Butterfly({ accent, second, playing, speed }: SceneProps) {
   )
 }
 
-function Astronaut({ accent, second, playing, speed }: SceneProps) {
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.35}>
-      <mesh position={[0, 0.05, 0]}><capsuleGeometry args={[0.48, 1.05, 18, 32]} /><meshStandardMaterial color="#eef5f8" roughness={0.48} /></mesh>
-      <mesh position={[0, 0.92, 0]}><sphereGeometry args={[0.58, 40, 40]} /><meshPhysicalMaterial color="#74dcff" transparent opacity={0.44} transmission={0.28} roughness={0.15} /></mesh>
-      <mesh position={[-0.66, 0.22, 0]} rotation={[0, 0, -0.3]}><capsuleGeometry args={[0.17, 0.75, 12, 20]} /><meshStandardMaterial color="#dce7ed" /></mesh>
-      <mesh position={[0.66, 0.22, 0]} rotation={[0, 0, 0.3]}><capsuleGeometry args={[0.17, 0.75, 12, 20]} /><meshStandardMaterial color="#dce7ed" /></mesh>
-      <mesh position={[0, -0.88, 0]}><sphereGeometry args={[0.54, 32, 32]} /><meshStandardMaterial color={accent} emissive={second} emissiveIntensity={0.18} /></mesh>
-    </AnimatedGroup>
-  )
-}
-
 function EnergyOrb({ accent, second, playing, speed }: SceneProps) {
   const core = useRef<Mesh>(null)
   useFrame((_, delta) => {
@@ -325,15 +184,6 @@ function Flame({ accent, second, playing, speed }: SceneProps) {
       ))}
       <pointLight position={[0, 0.2, 0]} color={accent} intensity={8} distance={5} />
     </group>
-  )
-}
-
-function Diamond({ accent, second, playing, speed }: SceneProps) {
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.52}>
-      <mesh scale={[1, 1.35, 1]}><octahedronGeometry args={[1, 0]} /><meshPhysicalMaterial color={accent} emissive={second} emissiveIntensity={0.18} metalness={0.72} roughness={0.08} transmission={0.2} clearcoat={1} /></mesh>
-      <mesh rotation={[0, 0.6, 0]}><octahedronGeometry args={[1.18, 0]} /><meshBasicMaterial color={second} wireframe transparent opacity={0.28} /></mesh>
-    </AnimatedGroup>
   )
 }
 
@@ -396,24 +246,13 @@ function Logo({ accent, second, playing, speed }: SceneProps) {
 function Text3D({ accent, second, playing, speed }: SceneProps) {
   return (
     <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.28}>
-      <Text font={FONT_URL} fontSize={1.35} anchorX="center" anchorY="middle" letterSpacing={-0.06}>
-        FAN360
-        <meshStandardMaterial color={accent} emissive={second} emissiveIntensity={0.72} metalness={0.48} roughness={0.22} />
-      </Text>
+      <Center>
+        <ExtrudedText font={FONT_URL} size={0.5} height={0.12}>
+          FAN360
+          <meshStandardMaterial color={accent} emissive={second} emissiveIntensity={0.72} metalness={0.48} roughness={0.22} />
+        </ExtrudedText>
+      </Center>
       <mesh position={[0, -1.05, 0]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[1.16, 0.025, 8, 100]} /><meshBasicMaterial color={second} /></mesh>
-    </AnimatedGroup>
-  )
-}
-
-function Car({ accent, second, playing, speed }: SceneProps) {
-  return (
-    <AnimatedGroup accent={accent} second={second} playing={playing} speed={speed} spin={0.3}>
-      <mesh position={[0, 0.15, 0]} scale={[1.8, 0.42, 0.78]}><boxGeometry args={[1, 1, 1]} /><meshPhysicalMaterial color={accent} metalness={0.68} roughness={0.22} clearcoat={0.8} /></mesh>
-      <mesh position={[-0.15, 0.58, 0]} scale={[1.05, 0.48, 0.72]}><boxGeometry args={[1, 1, 1]} /><meshPhysicalMaterial color="#9feaff" transparent opacity={0.58} metalness={0.18} roughness={0.12} /></mesh>
-      {[[-1.02, -0.25, 0.72], [1.02, -0.25, 0.72], [-1.02, -0.25, -0.72], [1.02, -0.25, -0.72]].map((position, index) => (
-        <mesh key={index} position={position as [number, number, number]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.31, 0.31, 0.2, 28]} /><meshStandardMaterial color="#11171d" /></mesh>
-      ))}
-      <mesh position={[1.73, 0.16, 0]} scale={[0.08, 0.28, 0.55]}><boxGeometry args={[1, 1, 1]} /><meshBasicMaterial color={second} /></mesh>
     </AnimatedGroup>
   )
 }
@@ -466,6 +305,8 @@ function ImportedModel({ asset, speed, accent, second }: { asset: ImportModelRes
       return resolved.get(normalized) ?? resolved.get(normalized.split('/').pop() ?? '') ?? url
     })
     const loader = new GLTFLoader(manager)
+    const decoder = new DRACOLoader(manager).setDecoderPath(new URL('./draco/', document.baseURI).href)
+    loader.setDRACOLoader(decoder)
     const main = asset.files.find((file) => file.name === asset.mainFile)
     if (!main) return
     const onLoad = (gltf: { scene: Group; animations: import('three').AnimationClip[] }) => {
@@ -493,6 +334,7 @@ function ImportedModel({ asset, speed, accent, second }: { asset: ImportModelRes
     else loader.parse(new TextDecoder().decode(data), '', onLoad, onError)
     return () => {
       active = false
+      decoder.dispose()
       mixerRef.current?.stopAllAction()
       mixerRef.current = null
       rootRef.current?.traverse((object) => {
@@ -524,7 +366,7 @@ function Custom({ accent, second, playing, speed, modelAsset }: SceneProps) {
         <ImportedModel asset={modelAsset} speed={speed} accent={accent} second={second} />
       ) : source ? (
         <Suspense fallback={<mesh><icosahedronGeometry args={[0.85, 1]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.55} /></mesh>}>
-          <Gltf src={source} scale={1.35} position={[0, -0.55, 0]} />
+          <Gltf src={source} useDraco="./draco/" scale={1.35} position={[0, -0.55, 0]} />
         </Suspense>
       ) : (
         <mesh><icosahedronGeometry args={[0.85, 1]} /><meshStandardMaterial color={accent} wireframe emissive={second} emissiveIntensity={0.55} /></mesh>
@@ -533,33 +375,35 @@ function Custom({ accent, second, playing, speed, modelAsset }: SceneProps) {
         <torusGeometry args={[1.45, 0.025, 10, 120]} />
         <meshBasicMaterial color={accent} />
       </mesh>
-      <Text font={FONT_URL} fontSize={0.38} anchorX="center" anchorY="middle" position={[0, -1.15, 0.8]}>
-        {modelAsset ? "LOCAL MODEL" : "CC0 GLB"}
-        <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.82} />
-      </Text>
+      <Center cacheKey={Boolean(modelAsset)} position={[0, -1.15, 0.8]}>
+        <ExtrudedText font={FONT_URL} size={0.26} height={0.04}>
+          {modelAsset ? "LOCAL MODEL" : "CC0 GLB"}
+          <meshStandardMaterial color={second} emissive={second} emissiveIntensity={0.82} />
+        </ExtrudedText>
+      </Center>
     </AnimatedGroup>
   )
 }
 
 const SCENE_COMPONENTS: Record<SceneId, ComponentType<SceneProps>> = {
-  strawberry: Strawberry,
+  strawberry: RealisticStrawberry,
   santa: Santa,
-  portrait: Portrait,
+  portrait: RealisticPortrait,
   countdown: Countdown,
-  earth: Earth,
-  gift: Gift,
-  rose: Rose,
+  earth: RealisticEarth,
+  gift: RealisticGift,
+  rose: RealisticRose,
   fireworks: Fireworks,
   butterfly: Butterfly,
-  astronaut: Astronaut,
+  astronaut: RealisticAstronaut,
   energy: EnergyOrb,
   flame: Flame,
-  diamond: Diamond,
+  diamond: RealisticDiamond,
   clock: Clock,
   spectrum: Spectrum,
   logo: Logo,
   text3d: Text3D,
-  car: Car,
+  car: RealisticCar,
   particles: ParticleHead,
   custom: Custom,
 }

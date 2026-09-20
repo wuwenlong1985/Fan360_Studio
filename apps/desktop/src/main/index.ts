@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { once } from 'node:events'
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
@@ -55,12 +55,15 @@ function emitSyncStatus(next: DeviceSyncStatus) {
 }
 
 function createWindow() {
+  const { width: availableWidth, height: availableHeight } = screen.getPrimaryDisplay().workAreaSize
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 1000,
+    width: Math.min(2080, availableWidth),
+    height: Math.min(1000, availableHeight),
     minWidth: 1180,
     minHeight: 720,
-    show: false,
+    // Show the shell immediately: Canvas sizing needs a first paint, and a
+    // hidden window can otherwise wait indefinitely for ready-to-show.
+    show: true,
     autoHideMenuBar: true,
     backgroundColor: '#f3f5f9',
     title: 'Fan360 Studio',
@@ -68,7 +71,7 @@ function createWindow() {
     titleBarOverlay: {
       color: '#f3f5f9',
       symbolColor: '#25354b',
-      height: 40,
+      height: 48,
     },
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -78,7 +81,6 @@ function createWindow() {
     },
   })
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.webContents.on('did-finish-load', () => console.log('[main] renderer loaded'))
   mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
     console.error(`[main] renderer failed to load: ${code} ${description}`)
