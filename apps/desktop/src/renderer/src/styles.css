@@ -279,11 +279,35 @@ select {
   display: grid !important;
   grid-template-rows: minmax(0, 1fr);
   gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
   background: #f3f5f9 !important;
 }
 
 .main-content.has-bottom {
-  grid-template-rows: minmax(0, 1fr) 246px;
+  /* Preserve a useful 3D viewport; let the preview cards determine their height. */
+  grid-template-rows: minmax(clamp(480px, 65vh, 760px), 1fr) max-content;
+}
+
+.main-content::-webkit-scrollbar {
+  width: 12px;
+}
+
+.main-content::-webkit-scrollbar-track {
+  background: #e9eef5;
+  border-radius: 6px;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  border: 2px solid #e9eef5;
+  border-radius: 6px;
+  background: #a9b8cc;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+  background: #7e94b1;
 }
 
 .viewport-card,
@@ -457,11 +481,18 @@ select {
 .device-card,
 .data-card {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.device-card {
+  min-height: 340px;
 }
 
 .device-card .ant-card-head,
 .data-card .ant-card-head {
   min-height: 43px;
+  flex-shrink: 0;
   padding: 0 13px;
   border-bottom-color: #edf1f6;
 }
@@ -474,19 +505,21 @@ select {
 
 .device-card .ant-card-body,
 .data-card .ant-card-body {
-  height: calc(100% - 43px);
+  flex: 1;
   padding: 11px !important;
 }
 
 .device-card .ant-card-body {
+  position: relative;
   padding: 0 !important;
 }
 
 .device-canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 190px;
   background: #f7f9fc;
 }
 

@@ -305,6 +305,8 @@ function useCanvasFrame(
       canvas.height = height
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
+    const resizeObserver = new ResizeObserver(resize)
+    resizeObserver.observe(canvas)
     window.addEventListener('resize', resize)
     const resizeTimer = window.setTimeout(resize, 0)
     const render = (time: number) => {
@@ -317,6 +319,7 @@ function useCanvasFrame(
       disposed = true
       cancelAnimationFrame(frame)
       window.clearTimeout(resizeTimer)
+      resizeObserver.disconnect()
       window.removeEventListener('resize', resize)
     }
   }, [canvasRef, callback])
@@ -361,9 +364,8 @@ function DevicePreview({ playing, speed, brightness, angle, frameRef }: { playin
       polarCache.current.frame = polarFrame
       polarCache.current.canvas = buildPolarPreview(polarFrame, 520)
     }
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const w = Math.max(320, width)
-    const h = Math.max(220, height)
+    const w = width
+    const h = height
     const centerX = w * 0.3
     const centerY = h * 0.52
     const radius = Math.min(h * 0.39, w * 0.19)
@@ -465,6 +467,7 @@ function DevicePreview({ playing, speed, brightness, angle, frameRef }: { playin
     ctx.fillStyle = '#09131d'
     ctx.strokeStyle = '#1d3448'
     ctx.lineWidth = 1
+    ctx.beginPath()
     ctx.roundRect(matrixX, matrixY, matrixW, matrixH, 10)
     ctx.fill()
     ctx.stroke()
@@ -830,12 +833,12 @@ function App() {
 
           {showBottom && (
           <Row gutter={[14, 14]} className="preview-row">
-            <Col span={14}>
+            <Col xs={24} xxl={14}>
               <Card className="device-card" title={<span><VideoCameraOutlined /> 设备显示仿真</span>} extra={<Tag color="cyan">POV Preview</Tag>}>
                 <DevicePreview playing={playing} speed={speed} brightness={brightness} angle={cameraAngle} frameRef={polarFrameRef} />
               </Card>
             </Col>
-            <Col span={10}>
+            <Col xs={24} xxl={10}>
               <Card className="data-card" title={<span><ThunderboltOutlined /> 数据与链路</span>} extra={<Tag color="green">1.92 MB/s</Tag>}>
                 <Row gutter={[10, 10]}>
                   <Col span={12}><Statistic title="角度片" value={360} suffix="组" /></Col>

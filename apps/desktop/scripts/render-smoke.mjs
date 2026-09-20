@@ -71,6 +71,93 @@ const sample = `(() => {
   return { width: canvas.width, height: canvas.height, litRatio: lit / (pixels.length / 16), colorfulRatio: colorful / (pixels.length / 16), hash: hash >>> 0 }
 })()`
 
+const previewLayout = `(() => {
+  const main = document.querySelector('.main-content')
+  const card = document.querySelector('.data-card')
+  const footer = card.querySelector('.ant-card-body > .ant-typography')
+  const canvas = document.querySelector('.device-canvas')
+  const device = document.querySelector('.device-card')
+  const radius = Math.min(canvas.clientHeight * 0.39, canvas.clientWidth * 0.19)
+  const scale = canvas.width / canvas.clientWidth
+  const pixels = canvas.getContext('2d').getImageData(
+    Math.round((canvas.clientWidth * 0.3 - radius * 0.6) * scale),
+    Math.round((canvas.clientHeight * 0.52 - radius * 0.6) * scale),
+    Math.round(radius * 1.2 * scale), Math.round(radius * 1.2 * scale),
+  ).data
+  let colorful = 0
+  for (let i = 0; i < pixels.length; i += 4) {
+    const high = Math.max(pixels[i], pixels[i + 1], pixels[i + 2])
+    const low = Math.min(pixels[i], pixels[i + 1], pixels[i + 2])
+    if (high > 50 && high - low > 40) colorful++
+  }
+  const rect = element => {
+    const { x, y, width, height, bottom, right } = element.getBoundingClientRect()
+    return { x, y, width, height, bottom, right }
+  }
+  return {
+    main: rect(main), card: rect(card), footer: rect(footer), device: rect(device),
+    canvas: rect(canvas), bitmap: { width: canvas.width, height: canvas.height },
+    diskColorfulRatio: colorful / (pixels.length / 4),
+    dpr: Math.min(devicePixelRatio, 2), scrollTop: main.scrollTop,
+    clientHeight: main.clientHeight, scrollHeight: main.scrollHeight,
+    clientWidth: main.clientWidth, scrollWidth: main.scrollWidth,
+    viewportHeight: document.querySelector('.viewport-card').getBoundingClientRect().height,
+    headerTop: document.querySelector('.app-header').getBoundingClientRect().top,
+    inspectorTop: document.querySelector('.inspector-sider').getBoundingClientRect().top,
+  }
+})()`
+
+function assertCanvasSize(layout) {
+  assert.ok(Math.abs(layout.bitmap.width - layout.canvas.width * layout.dpr) <= 1, 'preview bitmap must follow card width')
+  assert.ok(Math.abs(layout.bitmap.height - layout.canvas.height * layout.dpr) <= 1, 'preview bitmap must follow card height')
+}
+
+async function checkPreviewScrolling() {
+  report.previewLayouts = []
+  for (const [width, height, deviceScaleFactor] of [[2080, 1000, 1], [1600, 900, 1], [1366, 768, 1], [1180, 720, 1.5]]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile: false })
+    await evaluate(`document.querySelector('.main-content').scrollTop = 0`)
+    await delay(500)
+    const top = await evaluate(previewLayout)
+    assert.ok(top.scrollHeight > top.clientHeight, `${width}: bottom preview needs a usable scrollbar`)
+    assert.equal(top.scrollWidth, top.clientWidth, `${width}: no horizontal content clipping`)
+    assert.ok(top.viewportHeight >= 480, `${width}: keep a usable 3D viewport`)
+    assert.ok(top.canvas.height >= 280, `${width}: device disk and its captions need enough height`)
+    assert.ok(top.diskColorfulRatio > 0.03, `${width}: device disk must show the sampled scene`)
+    assert.ok(top.footer.bottom <= top.card.bottom - 8, `${width}: link summary must fit inside its card`)
+    if (width < 1600) assert.ok(top.card.y >= top.device.bottom, `${width}: stack preview cards in narrow windows`)
+    else assert.ok(Math.abs(top.card.y - top.device.y) < 1, `${width}: show preview cards side by side`)
+    assertCanvasSize(top)
+
+    // Drag the actual scrollbar thumb, rather than assigning scrollTop to reach the footer.
+    const x = top.main.right - 6
+    const thumbMiddle = top.main.y + top.clientHeight * top.clientHeight / top.scrollHeight / 2
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y: thumbMiddle, button: 'left', buttons: 1, clickCount: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: top.main.bottom - 2, button: 'left', buttons: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: top.main.bottom - 2, button: 'left', buttons: 0, clickCount: 1 })
+    await delay(300)
+    const bottom = await evaluate(previewLayout)
+    assert.ok(bottom.scrollTop > 0, `${width}: scrollbar drag must scroll the content`)
+    assert.ok(bottom.footer.y >= bottom.main.y && bottom.footer.bottom <= bottom.main.bottom, `${width}: full link summary must be reachable`)
+    assert.equal(bottom.headerTop, top.headerTop, 'header stays fixed while the main area scrolls')
+    assert.equal(bottom.inspectorTop, top.inspectorTop, 'inspector scrolls independently')
+    await screenshot(`preview-scroll-${width}`)
+
+    await evaluate(`document.querySelector('button[aria-label="显示下方设备预览"]').click()`)
+    await delay(300)
+    const hidden = await evaluate(`({preview: Boolean(document.querySelector('.preview-row')), top: document.querySelector('.main-content').scrollTop, overflow: document.querySelector('.main-content').scrollHeight - document.querySelector('.main-content').clientHeight})`)
+    assert.equal(hidden.preview, false)
+    assert.equal(hidden.top, 0, 'hiding the preview restores the viewport to the top')
+    assert.equal(hidden.overflow, 0, 'no empty scroll area after hiding the preview')
+    await evaluate(`document.querySelector('button[aria-label="显示下方设备预览"]').click()`)
+    await until(() => evaluate(`document.querySelector('canvas[data-has-polar-frame]')?.dataset.hasPolarFrame === 'true'`), 'restore device preview')
+    report.previewLayouts.push({ width, height, deviceScaleFactor, top, bottom, hidden })
+    console.log(`PASS preview ${width}x${height} @${deviceScaleFactor}: draggable scrollbar, complete content, show/hide`)
+  }
+  await send('Emulation.clearDeviceMetricsOverride')
+  await delay(500)
+}
+
 try {
   let port = attachedPort
   if (!port) {
@@ -191,14 +278,19 @@ try {
   await until(() => evaluate(`document.querySelector('canvas[data-has-polar-frame]')?.dataset.hasPolarFrame === 'true'`), 'device preview frame')
   report.devicePreview = true
   await screenshot('device-preview')
+  await checkPreviewScrolling()
   await evaluate(`document.querySelector('button[aria-label="显示设备圆框"]').click()`)
   await until(() => evaluate(`!document.querySelector('.circle-device-mask')`), 'hide circle')
   await evaluate(`document.querySelector('button[aria-label="显示右侧参数栏"]').click()`)
   await until(() => evaluate(`Boolean(document.querySelector('.inspector-collapsed'))`), 'hide inspector')
+  await delay(300)
+  assertCanvasSize(await evaluate(previewLayout))
   await evaluate(`document.querySelector('button[aria-label="显示设置"]').click()`)
   await until(() => evaluate(`Boolean(document.querySelector('button[aria-label="显示右侧参数栏"]'))`), 'display popover')
   await evaluate(`document.querySelector('button[aria-label="显示右侧参数栏"]').click()`)
   await until(() => evaluate(`!document.querySelector('.inspector-collapsed')`), 'restore inspector')
+  await delay(300)
+  assertCanvasSize(await evaluate(previewLayout))
   report.displayToggles = true
   const header = await evaluate(`({height:document.querySelector('.app-header').getBoundingClientRect().height, buttons:[...document.querySelectorAll('.app-header button')].map(b=>b.textContent.replace(/\\s/g,'')), selectors:document.querySelectorAll('.app-header .ant-select').length})`)
   assert.equal(header.height, 72)
